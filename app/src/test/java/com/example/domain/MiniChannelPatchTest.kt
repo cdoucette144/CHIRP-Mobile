@@ -17,6 +17,12 @@ class MiniChannelPatchTest {
         assertEquals(0x12.toByte(),changed[16])
         assertArrayEquals(base.copyOfRange(32,base.size),changed.copyOfRange(32,changed.size))
     }
+    @Test fun downloadedSimplexDoesNotGainRepeaterOffset() {
+        val ch=channel.copy(rxFreqHz=462562500,txFreqHz=462562500,duplex=DuplexMode.SIMPLEX,rxTone="DCS(raw:101)",txTone="DCS(raw:101)",power=PowerLevel.HIGH,mode="NFM",name="Channel 1")
+        val base=MiniChannelPatch.apply(image(),listOf(ch))
+        assertArrayEquals(base,MiniChannelPatch.apply(base,listOf(ch)))
+        assertArrayEquals(base.copyOfRange(0,4),base.copyOfRange(4,8))
+    }
     @Test fun unchangedChannelsProduceIdenticalImage() {
         val base=MiniChannelPatch.apply(image(),listOf(channel))
         assertArrayEquals(base,MiniChannelPatch.apply(base,listOf(channel)))

@@ -327,7 +327,7 @@ class ChirpViewModel(
             _codeplugChannels.value = _codeplugChannels.value
                 .take(radio.maxChannels)
                 .mapIndexed { idx, ch ->
-                    if (radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                    if (radio.model.contains("UV-5R Mini")) ch else if (radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
         }
         _statusBanner.value = "Radio set to ${radio.model} (Max ${radio.maxChannels} ch)."
@@ -534,7 +534,7 @@ class ChirpViewModel(
                     errorReason = "",
                     lastFailedAction = ""
                 )
-                _statusBanner.value = "Uploaded ${channels.size} channels & settings to ${radio.model}!"
+                _statusBanner.value = if (radio.model.contains("UV-5R Mini")) "Mini upload check completed. See transfer log for verification details." else "Uploaded ${channels.size} channels & settings to ${radio.model}!"
             } catch (e: Exception) {
                 val msg = e.localizedMessage ?: "Hardware clone write failed."
                 _flashLogs.value = _flashLogs.value + "[ERROR] $msg"
