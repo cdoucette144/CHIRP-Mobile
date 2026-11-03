@@ -327,7 +327,7 @@ class ChirpViewModel(
             _codeplugChannels.value = _codeplugChannels.value
                 .take(radio.maxChannels)
                 .mapIndexed { idx, ch ->
-                    normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                    if (radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
         }
         _statusBanner.value = "Radio set to ${radio.model} (Max ${radio.maxChannels} ch)."
