@@ -894,6 +894,7 @@ class HardwareProgrammerManager(private val context: Context) {
                     onProgress(1f, "[VERIFIED] No channel changes; no write commands sent.")
                     return@withContext
                 }
+                throw IOException("Mini writes disabled after recovery read-back mismatch. Backups retained.")
                 val changedBytes = original.indices.filter { original[it] != desired[it] }
                 val recoveryOnly = changedBytes.all { offset ->
                     val slot = offset / 32
