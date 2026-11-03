@@ -886,14 +886,13 @@ class HardwareProgrammerManager(private val context: Context) {
                 readMini(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
                 val original = checkNotNull(lastMiniImage).copyOf()
                 val desired = MiniChannelPatch.apply(original, channels)
-                MiniNameEditGate.validate(original,desired)
                 if (original.contentEquals(desired)) {
                     android.util.Log.i("ChirpBluetooth","[VERIFIED] No channel changes; no write commands sent.")
                     onProgress(1f,"[VERIFIED] No channel changes; no write commands sent.")
                     return@withContext
                 }
                 val blocks = MiniWritePlan.fullImage(desired)
-                android.util.Log.i("ChirpBluetooth","Mini full-image name test: ${blocks.size} blocks")
+                android.util.Log.i("ChirpBluetooth","Mini full-image upload: ${blocks.size} blocks")
                 for ((index,block) in blocks.withIndex()) {
                     val address = block.address
                     val payload = block.payload.copyOf()
