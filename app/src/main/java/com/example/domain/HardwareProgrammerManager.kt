@@ -425,7 +425,11 @@ class HardwareProgrammerManager(private val context: Context) {
             cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             @Suppress("DEPRECATION")
             connectedGatt.writeDescriptor(cccd)
-            withTimeoutOrNull(2500L) { descriptorReady.await() }
+            if (withTimeoutOrNull(2500L) { descriptorReady.await() } != true) {
+                connectedGatt.disconnect()
+                connectedGatt.close()
+                throw IOException("Bluetooth notification subscription failed. Reconnect the radio.")
+            }
             onLog("[GATT CCCD] Subscribed to UART RX notifications (0x2902).")
         }
 
@@ -785,6 +789,7 @@ class HardwareProgrammerManager(private val context: Context) {
         }
 
         try {
+            if (radio.model == "UV-5R Mini" || radio.model == "Baofeng UV-5R Mini") return@withContext readMini(transport, onProgress)
             performChirpHandshake(transport, radio) { line -> onProgress(0.15f, line) }
 
             // Read first 32 channels (32 * 16 bytes = 512 bytes = 8 blocks of 0x40 bytes from 0x0000..0x01C0)
@@ -876,6 +881,7 @@ class HardwareProgrammerManager(private val context: Context) {
         channels: List<RadioChannel>,
         onProgress: (Float, String) -> Unit
     ) = withContext(Dispatchers.IO) {
+        if (radio.model.contains("UV-5R Mini")) throw IOException("Mini upload is disabled while the read-only driver is being verified. No radio memory was written.")
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress) { line -> onProgress(0.08f, line) }
@@ -949,6 +955,83 @@ class HardwareProgrammerManager(private val context: Context) {
         } finally {
             transport.close()
         }
+    }
+
+
+    /** Mini protocol reference: CHIRP baofeng_uv17Pro.py, UV5RMini.
+     * Read-only: preserve the complete decrypted image before decoding channels.
+     */
+    private suspend fun readMini(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit): List<RadioChannel> {
+        suspend fun exchange(command: ByteArray, length: Int, label: String): ByteArray {
+            transport.writeBytes(command)
+            val reply = transport.readBytes(length, 4000L)
+            if (reply.size != length) throw IOException("Mini $label: expected $length bytes, received ${reply.size}. Close other radio apps and reconnect.")
+            return reply
+        }
+        transport.clearRxBuffer()
+        val ack = exchange("PROGRAMCOLORPROU".toByteArray(Charsets.US_ASCII), 1, "program handshake")
+        if (ack[0] != 0x06.toByte()) throw IOException("Mini rejected program handshake.")
+        val firmware = exchange(byteArrayOf(0x46), 16, "firmware identification")
+        onProgress(0.10f, "[MINI IDENT] " + firmware.joinToString(" ") { "%02X".format(it) })
+        exchange(byteArrayOf(0x4d), 15, "model identification")
+        val init = byteArrayOf(0x53,0x45,0x4e,0x44,0x21,0x05,0x0d,0x01,0x01,0x01,0x04,0x11,0x08,0x05,0x0d,0x0d,0x01,0x11,0x0f,0x09,0x12,0x09,0x10,0x04,0x00)
+        if (exchange(init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("Mini session initialization rejected.")
+        val image = ByteArrayOutputStream()
+        val key = byteArrayOf(0x43,0x4f,0x20,0x37)
+        for ((start, size) in listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x01c0)) {
+            for (address in start until start + size step 64) {
+                val reply = exchange(byteArrayOf(0x52,(address shr 8).toByte(),address.toByte(),0x40),68,"read %04X".format(address))
+                if (reply[0] != 0x57.toByte() && reply[0] != 0x52.toByte()) throw IOException("Mini invalid read response header at %04X".format(address))
+                if ((reply[1].toInt() and 255) != (address shr 8) || (reply[2].toInt() and 255) != (address and 255) || reply[3] != 0x40.toByte()) throw IOException("Mini read address/length mismatch.")
+                val payload = reply.copyOfRange(4,68)
+                payload.indices.forEach { i ->
+                    val value = payload[i].toInt() and 255
+                    val k = key[i % 4].toInt()
+                    if (k != 32 && value != 0 && value != 255 && value != k && value != (k xor 255)) payload[i] = (value xor k).toByte()
+                }
+                image.write(payload)
+                onProgress(0.15f + 0.80f * image.size() / 0x8240, "[MINI READ %04X] %d / 33344 bytes".format(address,image.size()))
+            }
+        }
+        val bytes = image.toByteArray()
+        val backup = java.io.File(context.filesDir, "mini-backups").apply { mkdirs() }
+        val file = java.io.File(backup, "uv5r-mini-${System.currentTimeMillis()}.bin")
+        file.writeBytes(bytes)
+        val channels = (0 until 999).mapNotNull { slot ->
+            val offset = slot * 32
+            if (bytes[offset] == 0xff.toByte()) return@mapNotNull null
+            fun frequency(at: Int): Long {
+                var result = 0L
+                var multiplier = 1L
+                for (i in 0..3) {
+                    val b = bytes[at+i].toInt() and 255
+                    if ((b and 15) > 9 || (b shr 4) > 9) throw IOException("Invalid Mini frequency encoding in channel ${slot+1}")
+                    result += ((b and 15) + (b shr 4)*10) * multiplier
+                    multiplier *= 100
+                }
+                return result * 10
+            }
+            fun tone(at: Int): String {
+                val value = (bytes[at].toInt() and 255) or ((bytes[at+1].toInt() and 255) shl 8)
+                return when {
+                    value == 0 || value == 65535 -> "None"
+                    value >= 600 -> String.format(Locale.US,"%.1f",value/10.0)
+                    else -> "DCS(raw:$value)"
+                }
+            }
+            val rx = frequency(offset)
+            val off = (4..7).all { bytes[offset+it] == 0xff.toByte() }
+            val tx = if (off) rx else frequency(offset+4)
+            val name = bytes.copyOfRange(offset+20,offset+32).map { it.toInt() and 255 }.takeWhile { it != 0 && it != 255 }.map { it.toChar() }.joinToString("").trim().ifBlank { "CH ${slot+1}" }
+            RadioChannel(number=slot+1,name=name,rxFreqHz=rx,txFreqHz=tx,
+                duplex=if(off) DuplexMode.OFF else if(tx==rx) DuplexMode.SIMPLEX else DuplexMode.SPLIT,
+                offsetHz=abs(tx-rx),rxTone=tone(offset+8),txTone=tone(offset+10),
+                mode=if(rx in 108000000L..135999999L) "AM" else if((bytes[offset+15].toInt() and 0x40)!=0) "FM" else "NFM",
+                power=if((bytes[offset+14].toInt() and 3)==1) PowerLevel.LOW else PowerLevel.HIGH,
+                rxOnly=off,notes="Mini read-only download; complete raw backup retained on device.")
+        }
+        onProgress(1f,"[MINI COMPLETE] ${channels.size} channels; backup ${file.name}. Upload disabled.")
+        return channels
     }
 
     /**
