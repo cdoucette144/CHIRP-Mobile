@@ -109,23 +109,14 @@ class MainActivity : ComponentActivity() {
 fun ChirpFieldAppNavigation(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
-    auth: FirebaseAuth = Firebase.auth
-) {
-    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
-    val user = currentUser
 
-    if (user == null) {
-        AuthScreen(
-            onAuthSuccess = { /* AuthStateListener updates currentUser automatically */ }
-        )
-    } else {
-        AuthenticatedFieldWorkspace(
-            currentUserId = user.uid,
-            userDisplayName = user.displayName ?: user.email ?: "Operator",
-            isDarkTheme = isDarkTheme,
-            onToggleTheme = onToggleTheme
-        )
-    }
+) {
+    AuthenticatedFieldWorkspace(
+        currentUserId = "local",
+        userDisplayName = "Local Operator",
+        isDarkTheme = isDarkTheme,
+        onToggleTheme = onToggleTheme
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -486,7 +477,7 @@ fun AuthenticatedFieldWorkspace(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Signed in as: $userDisplayName",
+                        text = "Local mode — no account required. Cloud sharing is unavailable.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -508,27 +499,7 @@ fun AuthenticatedFieldWorkspace(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (isDarkTheme) "Light UI" else "Dark UI")
                         }
-                        OutlinedButton(
-                            onClick = {
-                                showSettingsModal = false
-                                signOutUser(
-                                    credentialManager = credentialManager,
-                                    onSignOutComplete = {},
-                                    scope = coroutineScope
-                                )
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("sign_out_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Sign Out")
-                        }
+
                     }
                 }
             },

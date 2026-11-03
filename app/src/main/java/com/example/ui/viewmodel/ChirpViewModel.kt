@@ -112,11 +112,24 @@ class ChirpViewModel(
     private var lastBleAddress: String = ""
     private var lastUsbDeviceName: String = ""
 
+    private val localBanks = MutableStateFlow<List<ZoneDocument>>(emptyList())
+    private var localPrefs: android.content.SharedPreferences? = null
+
+    private fun persistLocalBanks() {
+        val rows = org.json.JSONArray()
+        localBanks.value.forEach { bank ->
+            rows.put(org.json.JSONObject().put("id", bank.id).put("name", bank.name)
+                .put("region", bank.region).put("model", bank.targetRadioModel)
+                .put("channels", org.json.JSONArray(bank.channelSpecs)))
+        }
+        localPrefs?.edit()?.putString("local_banks", rows.toString())?.apply()
+    }
+
     // Observe all user documents in /zones:
     // category == "SAVED_CODEPLUG" -> Cloud Saved Codeplugs
     // otherwise -> Tab 1 Saved Channel Banks (NO default banks seeded!)
     private val allUserZoneDocs: StateFlow<UiState<List<ZoneDocument>>> =
-        repository.observeUserZones(currentUserId)
+        (if (currentUserId == "local") localBanks else repository.observeUserZones(currentUserId))
             .map<List<ZoneDocument>, UiState<List<ZoneDocument>>> { list ->
                 val sorted = list.sortedBy { it.createdAt ?: Timestamp(0, 0) }
                 UiState.Success(sorted)
@@ -160,7 +173,7 @@ class ChirpViewModel(
         )
 
     val sharedCodeplugsState: StateFlow<UiState<List<SharedCodeplugDocument>>> =
-        repository.observeUserSharedCodeplugs(currentUserId)
+        (if (currentUserId == "local") kotlinx.coroutines.flow.flowOf(emptyList<SharedCodeplugDocument>()) else repository.observeUserSharedCodeplugs(currentUserId))
             .map<List<SharedCodeplugDocument>, UiState<List<SharedCodeplugDocument>>> { list ->
                 val sorted = list.sortedByDescending { it.updatedAt ?: it.createdAt ?: Timestamp(0, 0) }
                 UiState.Success(sorted)
@@ -200,6 +213,16 @@ class ChirpViewModel(
 
     fun loadPrefs(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        localPrefs = prefs
+        val rows = org.json.JSONArray(prefs.getString("local_banks", "[]") ?: "[]")
+        localBanks.value = (0 until rows.length()).map { index ->
+            val row = rows.getJSONObject(index)
+            val channels = row.getJSONArray("channels")
+            ZoneDocument(id = row.getString("id"), name = row.getString("name"),
+                region = row.getString("region"), targetRadioModel = row.getString("model"),
+                category = CATEGORY_CHANNEL_BANK,
+                channelSpecs = (0 until channels.length()).map { channels.getString(it) })
+        }
         _rrUsername.value = prefs.getString("rr_username", "") ?: ""
         _rrConnected.value = prefs.getBoolean("rr_connected", false)
     }
@@ -213,6 +236,20 @@ class ChirpViewModel(
         channels: List<RadioChannel>,
         onSaved: () -> Unit = {}
     ) {
+        if (currentUserId == "local") {
+            val bank = ZoneDocument(
+                id = existingBank?.id ?: java.util.UUID.randomUUID().toString(),
+                name = bankName.trim().ifBlank { "Custom Channel Bank" },
+                region = regionSummary, category = CATEGORY_CHANNEL_BANK,
+                targetRadioModel = _selectedRadio.value.model,
+                channelSpecs = channels.map { it.toSpecString() }
+            )
+            localBanks.value = localBanks.value.filterNot { it.id == bank.id } + bank
+            persistLocalBanks()
+            _statusBanner.value = "Saved channel bank locally."
+            onSaved()
+            return
+        }
         viewModelScope.launch {
             val reindexed = channels.mapIndexed { idx, ch -> ch.copy(number = idx + 1) }
             val result = if (existingBank == null) {
@@ -243,6 +280,11 @@ class ChirpViewModel(
     }
 
     fun deleteChannelBank(bank: ZoneDocument) {
+        if (currentUserId == "local") {
+            localBanks.value = localBanks.value.filterNot { it.id == bank.id }
+            persistLocalBanks()
+            return
+        }
         viewModelScope.launch {
             val res = repository.deleteZone(bank.id)
             if (res.isSuccess) {
@@ -594,6 +636,10 @@ class ChirpViewModel(
         authorCallsign: String,
         releaseNotes: String
     ) {
+        if (currentUserId == "local") {
+            _statusBanner.value = "Cloud sharing is unavailable in local mode. Use Save Local."
+            return
+        }
         viewModelScope.launch {
             val cleanName = name.trim().ifBlank { _codeplugTitle.value }
             val radio = _selectedRadio.value
@@ -633,6 +679,10 @@ class ChirpViewModel(
     }
 
     fun lookupAndOpenRemoteCodeplug(shareCode: String) {
+        if (currentUserId == "local") {
+            _statusBanner.value = "Cloud sharing is unavailable in local mode."
+            return
+        }
         viewModelScope.launch {
             val res = repository.fetchRemoteSharedCodeplug(shareCode)
             res.onSuccess { doc ->
