@@ -113,6 +113,7 @@ interface RadioSerialTransport {
 }
 
 class HardwareProgrammerManager(private val context: Context) {
+    private var lastMiniImage: ByteArray? = null
 
     fun scanUsbOtgDevices(): List<DetectedUsbCable> {
         val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return emptyList()
@@ -873,7 +874,6 @@ class HardwareProgrammerManager(private val context: Context) {
         channels: List<RadioChannel>,
         onProgress: (Float, String) -> Unit
     ) = withContext(Dispatchers.IO) {
-        if (radio.model.contains("UV-5R Mini")) throw IOException("Mini upload is disabled while the read-only driver is being verified. No radio memory was written.")
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress) { line -> onProgress(0.08f, line) }
@@ -882,6 +882,38 @@ class HardwareProgrammerManager(private val context: Context) {
         }
 
         try {
+            if (radio.model.contains("UV-5R Mini")) {
+                readMini(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
+                val original = checkNotNull(lastMiniImage).copyOf()
+                val desired = MiniChannelPatch.apply(original, channels)
+                val addresses = (0 until 0x7d00 step 128).filter { address ->
+                    !original.copyOfRange(address,address+128).contentEquals(desired.copyOfRange(address,address+128))
+                }
+                if (addresses.isEmpty()) {
+                    onProgress(1f, "[VERIFIED] No channel changes; no write commands sent.")
+                    return@withContext
+                }
+                for ((index,address) in addresses.withIndex()) {
+                    val payload = desired.copyOfRange(address,address+128)
+                    val key = byteArrayOf(0x43,0x4f,0x20,0x37)
+                    payload.indices.forEach { i ->
+                        val value = payload[i].toInt() and 255
+                        val k = key[i%4].toInt()
+                        if(k != 32 && value != 0 && value != 255 && value != k && value != (k xor 255)) payload[i]=(value xor k).toByte()
+                    }
+                    val frame = byteArrayOf(0x57,(address shr 8).toByte(),address.toByte(),0x80.toByte()) + payload
+                    android.util.Log.i("ChirpBluetooth","Mini WRITE %04X".format(address))
+                    transport.writeBytes(frame)
+                    val ack = transport.readBytes(1,4000)
+                    if (ack.size != 1 || ack[0] != 6.toByte()) throw IOException("Mini write acknowledgment failed at %04X. Backup retained; read the radio before retrying.".format(address))
+                    onProgress(0.35f + 0.25f*(index+1)/addresses.size,"[WRITE %04X] acknowledged".format(address))
+                }
+                readMini(transport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[VERIFY] $message") }, initialize = false)
+                val actual = checkNotNull(lastMiniImage)
+                if (!desired.contentEquals(actual)) throw IOException("Mini read-back differs from the intended memory image. Backup retained; upload is not verified.")
+                onProgress(1f,"[VERIFIED] Mini channel changes read back correctly; other memory preserved.")
+                return@withContext
+            }
             performChirpHandshake(transport, radio) { line -> onProgress(0.16f, line) }
 
             val paddedSlotCount = ((channels.size + 3) / 4).coerceAtLeast(1) * 4
@@ -953,7 +985,7 @@ class HardwareProgrammerManager(private val context: Context) {
     /** Mini protocol reference: CHIRP baofeng_uv17Pro.py, UV5RMini.
      * Read-only: preserve the complete decrypted image before decoding channels.
      */
-    private suspend fun readMini(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit): List<RadioChannel> {
+    private suspend fun readMini(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true): List<RadioChannel> {
         suspend fun exchange(command: ByteArray, length: Int, label: String): ByteArray {
             android.util.Log.i("ChirpBluetooth", "Mini $label TX=" + command.joinToString(" ") { "%02X".format(it) })
             transport.writeBytes(command)
@@ -962,6 +994,7 @@ class HardwareProgrammerManager(private val context: Context) {
             if (reply.size != length) throw IOException("Mini $label: expected $length bytes, received ${reply.size}. Close other radio apps and reconnect.")
             return reply
         }
+        if (initialize) {
         transport.clearRxBuffer()
         val ack = exchange("PROGRAMCOLORPROU".toByteArray(Charsets.US_ASCII), 1, "program handshake")
         if (ack[0] != 0x06.toByte()) throw IOException("Mini rejected program handshake.")
@@ -970,6 +1003,7 @@ class HardwareProgrammerManager(private val context: Context) {
         exchange(byteArrayOf(0x4d), 15, "model identification")
         val init = byteArrayOf(0x53,0x45,0x4e,0x44,0x21,0x05,0x0d,0x01,0x01,0x01,0x04,0x11,0x08,0x05,0x0d,0x0d,0x01,0x11,0x0f,0x09,0x12,0x09,0x10,0x04,0x00)
         if (exchange(init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("Mini session initialization rejected.")
+        }
         val image = ByteArrayOutputStream()
         val key = byteArrayOf(0x43,0x4f,0x20,0x37)
         for ((start, size) in listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x01c0)) {
@@ -988,6 +1022,7 @@ class HardwareProgrammerManager(private val context: Context) {
             }
         }
         val bytes = image.toByteArray()
+        lastMiniImage = bytes.copyOf()
         val backup = java.io.File(context.filesDir, "mini-backups").apply { mkdirs() }
         val file = java.io.File(backup, "uv5r-mini-${System.currentTimeMillis()}.bin")
         file.writeBytes(bytes)
@@ -1024,7 +1059,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 power=if((bytes[offset+14].toInt() and 3)==1) PowerLevel.LOW else PowerLevel.HIGH,
                 rxOnly=off,notes="Mini read-only download; complete raw backup retained on device.")
         }
-        onProgress(1f,"[MINI COMPLETE] ${channels.size} channels; backup ${file.name}. Upload disabled.")
+        onProgress(1f,"[MINI COMPLETE] ${channels.size} channels; backup ${file.name}.")
         return channels
     }
 

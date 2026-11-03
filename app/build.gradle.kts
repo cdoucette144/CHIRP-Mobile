@@ -34,7 +34,8 @@ android {
       keyPassword = System.getenv("KEY_PASSWORD")
     }
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
+      storeFile = file("${rootDir}/development-signing.p12")
+      storeType = "PKCS12"
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
@@ -51,7 +52,7 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      // Use Android Gradle Plugin default debug signing for cloud builds.
+      signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
   compileOptions {
