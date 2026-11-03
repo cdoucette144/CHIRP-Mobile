@@ -883,6 +883,7 @@ class HardwareProgrammerManager(private val context: Context) {
 
         try {
             if (radio.model.contains("UV-5R Mini")) {
+                throw IOException("Mini upload temporarily disabled: no-change validation failed. Original backups retained.")
                 readMini(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
                 val original = checkNotNull(lastMiniImage).copyOf()
                 val desired = MiniChannelPatch.apply(original, channels)
