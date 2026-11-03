@@ -274,6 +274,7 @@ class HardwareProgrammerManager(private val context: Context) {
             throw IOException("Invalid Bluetooth MAC address: $bleAddress")
         }
 
+        android.util.Log.i("ChirpBluetooth", "[BLE] Opening programming transport")
         onLog("[BLE] Connecting to ${device.name ?: bleAddress} ($bleAddress)...")
 
         val rxQueue = LinkedBlockingQueue<Byte>()
@@ -378,37 +379,27 @@ class HardwareProgrammerManager(private val context: Context) {
         }
 
         for (svc in customServices) {
-            val shortSvc = svc.uuid.toString().uppercase(Locale.US).take(8)
-            val charSummary = svc.characteristics.joinToString(", ") { ch ->
-                ch.uuid.toString().uppercase(Locale.US).take(8)
-            }
-            onLog("[GATT SVC] $shortSvc -> chars: [$charSummary]")
             for (ch in svc.characteristics) {
-                val props = ch.properties
-                val canWrite = (props and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 ||
-                    (props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
-                val canNotify = (props and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0 ||
-                    (props and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0
-                if (canNotify && notifyChar == null) {
-                    notifyChar = ch
-                }
-                if (canWrite && writeChar == null) {
-                    writeChar = ch
-                }
-                // Prefer distinct write char if service exposes separate TX/RX characteristics (e.g. FFF1 notify, FFF2 write)
-                if (canWrite && !canNotify) {
-                    writeChar = ch
-                }
+                android.util.Log.i("ChirpBluetooth", "service=${svc.uuid} char=${ch.uuid} properties=${ch.properties}")
+                onLog("[GATT] service=${svc.uuid} char=${ch.uuid} properties=0x${ch.properties.toString(16)}")
             }
         }
-
-        if (writeChar == null || notifyChar == null) {
-            try {
-                connectedGatt.disconnect()
-                connectedGatt.close()
-            } catch (_: Exception) {
+        // UV-5R Mini programming UART: FFE0 / FFE1. Vendor control
+        // services (such as AE00) are not interchangeable serial ports.
+        val uart = connectedGatt.getService(UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb"))
+            ?.getCharacteristic(UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb"))
+        if (uart != null) {
+            val props = uart.properties
+            if ((props and (BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0 &&
+                (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0) {
+                writeChar = uart
+                notifyChar = uart
             }
-            return@withContext openClassicSppFallback(device, onLog)
+        }
+        if (writeChar == null || notifyChar == null) {
+            connectedGatt.disconnect()
+            connectedGatt.close()
+            throw IOException("Selected Bluetooth device does not expose the Mini programming UART (FFE0/FFE1). Select the radio's programming device, not its audio/control connection. Discovered services: " + customServices.joinToString { it.uuid.toString().take(8) })
         }
 
         val finalWriteChar = writeChar!!
@@ -418,13 +409,13 @@ class HardwareProgrammerManager(private val context: Context) {
         )
 
         // Enable notifications on finalNotifyChar
-        connectedGatt.setCharacteristicNotification(finalNotifyChar, true)
+        if (!connectedGatt.setCharacteristicNotification(finalNotifyChar, true)) throw IOException("Unable to enable Mini UART notifications.")
         val cccd = finalNotifyChar.getDescriptor(CCCD_UUID)
         if (cccd != null) {
             @Suppress("DEPRECATION")
-            cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            cccd.value = if ((finalNotifyChar.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
             @Suppress("DEPRECATION")
-            connectedGatt.writeDescriptor(cccd)
+            if (!connectedGatt.writeDescriptor(cccd)) throw IOException("Bluetooth notification subscription could not start.")
             if (withTimeoutOrNull(2500L) { descriptorReady.await() } != true) {
                 connectedGatt.disconnect()
                 connectedGatt.close()
@@ -433,7 +424,7 @@ class HardwareProgrammerManager(private val context: Context) {
             onLog("[GATT CCCD] Subscribed to UART RX notifications (0x2902).")
         }
 
-        delay(150)
+        delay(500)
 
         object : RadioSerialTransport {
             @SuppressLint("MissingPermission")
@@ -461,7 +452,8 @@ class HardwareProgrammerManager(private val context: Context) {
                     }
                     if (!useNoResponse) {
                         withContext(Dispatchers.IO) {
-                            writeAckSignal.poll(1500, TimeUnit.MILLISECONDS)
+                            val status = writeAckSignal.poll(1500, TimeUnit.MILLISECONDS)
+                            if (status != BluetoothGatt.GATT_SUCCESS) throw IOException("Bluetooth write failed or timed out (status=$status)")
                         }
                     } else {
                         delay(18)
@@ -963,8 +955,10 @@ class HardwareProgrammerManager(private val context: Context) {
      */
     private suspend fun readMini(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit): List<RadioChannel> {
         suspend fun exchange(command: ByteArray, length: Int, label: String): ByteArray {
+            android.util.Log.i("ChirpBluetooth", "Mini $label TX=" + command.joinToString(" ") { "%02X".format(it) })
             transport.writeBytes(command)
             val reply = transport.readBytes(length, 4000L)
+            android.util.Log.i("ChirpBluetooth", "Mini $label RX ${reply.size}/$length bytes")
             if (reply.size != length) throw IOException("Mini $label: expected $length bytes, received ${reply.size}. Close other radio apps and reconnect.")
             return reply
         }
