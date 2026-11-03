@@ -885,20 +885,15 @@ class HardwareProgrammerManager(private val context: Context) {
             if (radio.model.contains("UV-5R Mini")) {
                 readMini(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
                 val original = checkNotNull(lastMiniImage).copyOf()
-                val recoveryFile = java.io.File(context.filesDir,"mini-full-recovery.bin")
-                if (!recoveryFile.exists()) throw IOException("Prepared full recovery image is required. General uploads remain disabled.")
-                val desired = recoveryFile.readBytes()
-                val hash = MessageDigest.getInstance("SHA-256").digest(desired).joinToString("") { "%02x".format(it) }
-                if (hash != "62c100ccbb0aadbd8ed4049e1d23c53dca05360bd4115ba687f31bf6c75cfdef") throw IOException("Recovery image integrity check failed.")
-                if (!MiniChannelPatch.apply(desired,channels).contentEquals(desired)) throw IOException("Select the unedited Mini Simplex TX Recovery codeplug. No writes sent.")
-                if (!original.copyOfRange(0x7d00,original.size).contentEquals(desired.copyOfRange(0x7d00,desired.size))) throw IOException("Radio settings differ from the recovery snapshot; recovery blocked.")
+                val desired = MiniChannelPatch.apply(original, channels)
+                MiniNameEditGate.validate(original,desired)
                 if (original.contentEquals(desired)) {
-                    android.util.Log.i("ChirpBluetooth","[VERIFIED] Recovery already matches; no write commands sent.")
-                    onProgress(1f,"[VERIFIED] Recovery already matches; no write commands sent.")
+                    android.util.Log.i("ChirpBluetooth","[VERIFIED] No channel changes; no write commands sent.")
+                    onProgress(1f,"[VERIFIED] No channel changes; no write commands sent.")
                     return@withContext
                 }
                 val blocks = MiniWritePlan.fullImage(desired)
-                android.util.Log.i("ChirpBluetooth","Mini full-image recovery: ${blocks.size} blocks")
+                android.util.Log.i("ChirpBluetooth","Mini full-image name test: ${blocks.size} blocks")
                 for ((index,block) in blocks.withIndex()) {
                     val address = block.address
                     val payload = block.payload.copyOf()
