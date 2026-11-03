@@ -885,26 +885,23 @@ class HardwareProgrammerManager(private val context: Context) {
             if (radio.model.contains("UV-5R Mini")) {
                 readMini(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
                 val original = checkNotNull(lastMiniImage).copyOf()
-                val desired = MiniChannelPatch.apply(original, channels)
-                val addresses = (0 until 0x7d00 step 128).filter { address ->
-                    !original.copyOfRange(address,address+128).contentEquals(desired.copyOfRange(address,address+128))
-                }
-                if (addresses.isEmpty()) {
-                    android.util.Log.i("ChirpBluetooth", "[VERIFIED] No channel changes; no write commands sent.")
-                    onProgress(1f, "[VERIFIED] No channel changes; no write commands sent.")
+                val recoveryFile = java.io.File(context.filesDir,"mini-full-recovery.bin")
+                if (!recoveryFile.exists()) throw IOException("Prepared full recovery image is required. General uploads remain disabled.")
+                val desired = recoveryFile.readBytes()
+                val hash = MessageDigest.getInstance("SHA-256").digest(desired).joinToString("") { "%02x".format(it) }
+                if (hash != "62c100ccbb0aadbd8ed4049e1d23c53dca05360bd4115ba687f31bf6c75cfdef") throw IOException("Recovery image integrity check failed.")
+                if (!MiniChannelPatch.apply(desired,channels).contentEquals(desired)) throw IOException("Select the unedited Mini Simplex TX Recovery codeplug. No writes sent.")
+                if (!original.copyOfRange(0x7d00,original.size).contentEquals(desired.copyOfRange(0x7d00,desired.size))) throw IOException("Radio settings differ from the recovery snapshot; recovery blocked.")
+                if (original.contentEquals(desired)) {
+                    android.util.Log.i("ChirpBluetooth","[VERIFIED] Recovery already matches; no write commands sent.")
+                    onProgress(1f,"[VERIFIED] Recovery already matches; no write commands sent.")
                     return@withContext
                 }
-                throw IOException("Mini writes disabled after recovery read-back mismatch. Backups retained.")
-                val changedBytes = original.indices.filter { original[it] != desired[it] }
-                val recoveryOnly = changedBytes.all { offset ->
-                    val slot = offset / 32
-                    slot in 0..21 && offset % 32 in 4..7 &&
-                        desired.copyOfRange(slot*32,slot*32+4).contentEquals(desired.copyOfRange(slot*32+4,slot*32+8))
-                }
-                if (!recoveryOnly) throw IOException("Only the targeted simplex TX recovery is enabled. Other changed uploads remain blocked; no write commands sent.")
-                android.util.Log.i("ChirpBluetooth", "Mini upload: ${addresses.size} changed blocks; full read-back required")
-                for ((index,address) in addresses.withIndex()) {
-                    val payload = desired.copyOfRange(address,address+128)
+                val blocks = MiniWritePlan.fullImage(desired)
+                android.util.Log.i("ChirpBluetooth","Mini full-image recovery: ${blocks.size} blocks")
+                for ((index,block) in blocks.withIndex()) {
+                    val address = block.address
+                    val payload = block.payload.copyOf()
                     val key = byteArrayOf(0x43,0x4f,0x20,0x37)
                     payload.indices.forEach { i ->
                         val value = payload[i].toInt() and 255
@@ -916,7 +913,7 @@ class HardwareProgrammerManager(private val context: Context) {
                     transport.writeBytes(frame)
                     val ack = transport.readBytes(1,4000)
                     if (ack.size != 1 || ack[0] != 6.toByte()) throw IOException("Mini write acknowledgment failed at %04X. Backup retained; read the radio before retrying.".format(address))
-                    onProgress(0.35f + 0.25f*(index+1)/addresses.size,"[WRITE %04X] acknowledged".format(address))
+                    onProgress(0.35f + 0.25f*(index+1)/blocks.size,"[WRITE %04X] acknowledged".format(address))
                 }
                 readMini(transport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[VERIFY] $message") }, initialize = false)
                 val actual = checkNotNull(lastMiniImage)
