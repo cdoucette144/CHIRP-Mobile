@@ -1,0 +1,140 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidSafetyProfile(profile) {
+      return profile is string && profile in ['STANDARD_TX', 'RX_ONLY_INHIBIT', 'SAFE_TX_FALLBACK_FRS1'];
+    }
+
+    function isValidChannelSpecs(specs) {
+      return specs is list &&
+             specs.size() <= 100 &&
+             (specs.size() == 0 || (specs[0] is string && specs[0].size() <= 256));
+    }
+
+    function isValidZone(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.region is string && data.region.size() >= 1 && data.region.size() <= 80 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 40 &&
+             isValidSafetyProfile(data.safetyProfile) &&
+             data.targetRadioModel is string && data.targetRadioModel.size() >= 1 && data.targetRadioModel.size() <= 80 &&
+             data.shareCode is string && data.shareCode.size() <= 32 &&
+             data.version is int && data.version >= 1 && data.version <= 100000 &&
+             isValidChannelSpecs(data.channelSpecs) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidSharedCodeplug(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.authorCallsign is string && data.authorCallsign.size() >= 1 && data.authorCallsign.size() <= 32 &&
+             data.shareCode is string && data.shareCode.size() >= 3 && data.shareCode.size() <= 32 &&
+             data.shareCode.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.region is string && data.region.size() >= 1 && data.region.size() <= 80 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 40 &&
+             isValidSafetyProfile(data.safetyProfile) &&
+             data.targetRadioModel is string && data.targetRadioModel.size() >= 1 && data.targetRadioModel.size() <= 80 &&
+             data.version is int && data.version >= 1 && data.version <= 100000 &&
+             data.releaseNotes is string && data.releaseNotes.size() <= 300 &&
+             isValidChannelSpecs(data.channelSpecs) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // Collection 1: User-owned custom channel sets / zones
+    match /zones/{zoneId} {
+      allow get: if isSignedIn() && isValidId(zoneId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(zoneId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'name', 'region', 'category', 'safetyProfile',
+                         'targetRadioModel', 'shareCode', 'version', 'channelSpecs',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'name', 'region', 'category', 'safetyProfile',
+                         'targetRadioModel', 'shareCode', 'version', 'channelSpecs',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidZone(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(zoneId) &&
+                       isValidZone(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'region', 'category', 'safetyProfile',
+                         'targetRadioModel', 'shareCode', 'version', 'channelSpecs', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && isValidId(zoneId) && existing().userId == request.auth.uid;
+    }
+
+    // Collection 2: Remotely shared codeplugs for over-the-air updates (contains zero PII)
+    match /shared_codeplugs/{shareCode} {
+      // Any authenticated operator who knows the shareCode can fetch the codeplug to sync updates
+      allow get: if isSignedIn() && isValidId(shareCode);
+      // Listing published shared codeplugs requires explicit userId ownership filter
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(shareCode) &&
+                       incoming().shareCode == shareCode &&
+                       incoming().keys().hasAll([
+                         'userId', 'authorCallsign', 'shareCode', 'name', 'region',
+                         'category', 'safetyProfile', 'targetRadioModel', 'version',
+                         'releaseNotes', 'channelSpecs', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'authorCallsign', 'shareCode', 'name', 'region',
+                         'category', 'safetyProfile', 'targetRadioModel', 'version',
+                         'releaseNotes', 'channelSpecs', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidSharedCodeplug(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(shareCode) &&
+                       isValidSharedCodeplug(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().shareCode == existing().shareCode &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'authorCallsign', 'name', 'region', 'category', 'safetyProfile',
+                         'targetRadioModel', 'version', 'releaseNotes', 'channelSpecs', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && isValidId(shareCode) && existing().userId == request.auth.uid;
+    }
+  }
+}

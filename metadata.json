@@ -1,0 +1,6 @@
+{
+  "name": "ChirpField",
+  "description": "Mobile radio programming, RepeaterBook & RadioReference channel import, RX/TX safety profiles, custom zones, and cloud codeplug sharing via USB OTG and BLE.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

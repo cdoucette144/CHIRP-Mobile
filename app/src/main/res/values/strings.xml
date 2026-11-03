@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">ChirpField</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="cd_hero_banner">Tactical radio field programmer banner</string>
+    <string name="cd_sign_out">Sign out</string>
+    <string name="cd_toggle_theme">Toggle daylight or night field theme</string>
+    <string name="cd_settings">Open Settings and RadioReference Login</string>
+    <string name="tab_channel_banks">Channel Banks</string>
+    <string name="tab_codeplug">Codeplug</string>
+    <string name="tab_radio_settings">Radio Settings</string>
+</resources>

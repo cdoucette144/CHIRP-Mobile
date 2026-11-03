@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="360dp"
+    android:height="160dp"
+    android:viewportWidth="360"
+    android:viewportHeight="160">
+    <!-- Deep obsidian background with tactical grid -->
+    <path android:pathData="M0,0h360v160h-360z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="360"
+                android:endY="160"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#0D1117" />
+                <item android:offset="0.6" android:color="#161B22" />
+                <item android:offset="1.0" android:color="#1F2937" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Subtle telemetry grid lines -->
+    <path
+        android:strokeColor="#21262D"
+        android:strokeWidth="1"
+        android:pathData="M0,32 L360,32 M0,64 L360,64 M0,96 L360,96 M0,128 L360,128 M60,0 L60,160 M120,0 L120,160 M180,0 L180,160 M240,0 L240,160 M300,0 L300,160" />
+    <!-- RF Spectrum Waveform -->
+    <path
+        android:strokeColor="#00B4D8"
+        android:strokeWidth="2"
+        android:pathData="M0,115 L35,115 L45,108 L55,115 L85,115 L95,70 L103,42 L111,70 L120,115 L165,115 L175,88 L182,58 L190,88 L200,115 L255,115 L265,98 L272,78 L280,98 L290,115 L360,115" />
+    <!-- Amber Repeater Offset Carrier Envelope -->
+    <path
+        android:strokeColor="#FF9F1C"
+        android:strokeWidth="2.5"
+        android:pathData="M0,132 L125,132 L138,94 L146,52 L154,94 L166,132 L360,132" />
+    <!-- Stylised Handheld Radio Silhouette on Right -->
+    <path
+        android:fillColor="#21262D"
+        android:strokeColor="#FF9F1C"
+        android:strokeWidth="2"
+        android:pathData="M282,36 L332,36 C335,36 338,39 338,42 L338,136 C338,139 335,142 332,142 L282,142 C279,142 276,139 276,136 L276,42 C276,39 279,36 282,36 Z" />
+    <path
+        android:fillColor="#FF9F1C"
+        android:pathData="M286,10 L293,10 L295,36 L285,36 Z" />
+    <path
+        android:fillColor="#0D1117"
+        android:pathData="M283,46 L331,46 L331,78 L283,78 Z" />
+    <path
+        android:fillColor="#2EC4B6"
+        android:pathData="M288,53 L318,53 L318,58 L288,58 Z" />
+    <path
+        android:fillColor="#FF9F1C"
+        android:pathData="M288,64 L326,64 L326,70 L288,70 Z" />
+</vector>

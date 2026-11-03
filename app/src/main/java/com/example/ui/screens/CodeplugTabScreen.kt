@@ -1,0 +1,1433 @@
+package com.example.ui.screens
+
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.example.data.model.DuplexMode
+import com.example.data.model.PowerLevel
+import com.example.data.model.RadioChannel
+import com.example.data.model.ZoneDocument
+import com.example.domain.AnalogRadioReferenceDirectory
+import com.example.domain.DetectedBleRadio
+import com.example.domain.HardwareProgrammerManager
+import com.example.domain.RadioCatalog
+import com.example.domain.RepeaterOffsetCalculator
+import com.example.domain.classSupportedRadioModel
+import com.example.ui.theme.AmberVfoPrimary
+import com.example.ui.theme.CyanRepeaterSecondary
+import com.example.ui.theme.FrsFallbackYellow
+import com.example.ui.theme.RxSafeGreen
+import com.example.ui.viewmodel.LocalSavedCodeplugSummary
+import com.example.ui.components.ConnectivityStatusBadge
+import com.example.ui.components.RadioBrandModelDropdowns
+import com.example.ui.viewmodel.HardwareConnectivityState
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+@Composable
+fun CodeplugTabScreen(
+    isCodeplugLoaded: Boolean,
+    codeplugTitle: String,
+    channels: List<RadioChannel>,
+    selectedRadio: classSupportedRadioModel,
+    cloudSavedCodeplugs: List<ZoneDocument>,
+    connectivityState: HardwareConnectivityState,
+    isFlashing: Boolean,
+    flashProgress: Float,
+    flashLogs: List<String>,
+    onSelectRadio: (classSupportedRadioModel) -> Unit,
+    onToggleRxOnly: (Int, Boolean) -> Unit,
+    onMoveChannel: (Int, Int) -> Unit,
+    onSaveOrAddChannel: (RadioChannel, Boolean) -> Unit,
+    onDeleteChannel: (Int) -> Unit,
+    onDownloadFromRadio: (HardwareProgrammerManager, classSupportedRadioModel, String, String, String) -> Unit,
+    onUploadToRadio: (HardwareProgrammerManager, String, String, String) -> Unit,
+    onRetryConnection: () -> Unit,
+    onDisconnectHardware: () -> Unit,
+    onSaveLocal: (String) -> Unit,
+    onListLocalCodeplugs: () -> List<LocalSavedCodeplugSummary>,
+    onOpenLocalCodeplug: (LocalSavedCodeplugSummary) -> Unit,
+    onOpenCloudCodeplug: (ZoneDocument) -> Unit,
+    onSaveCloudCodeplug: (String, String, String, String) -> Unit,
+    onOpenRemoteShareCode: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val programmerManager = remember(context) { HardwareProgrammerManager(context) }
+
+    var showDownloadRadioDialog by remember { mutableStateOf(false) }
+    var showUploadRadioDialog by remember { mutableStateOf(false) }
+    var showSaveCodeplugDialog by remember { mutableStateOf(false) }
+    var showOpenCodeplugDialog by remember { mutableStateOf(false) }
+
+    var editingChannel by remember { mutableStateOf<RadioChannel?>(null) }
+    var isAddingNewChannel by remember { mutableStateOf(false) }
+
+    // Drag-and-drop state
+    var draggedIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("codeplug_tab_screen")
+    ) {
+        // 1. DASHBOARD BAR DIRECTLY UNDERNEATH THE TABS
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Live Hardware Connectivity Indicator Badge + Retry
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ConnectivityStatusBadge(
+                        state = connectivityState,
+                        onRetry = onRetryConnection,
+                        onDisconnect = onDisconnectHardware,
+                        onTapBadge = { showDownloadRadioDialog = true },
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                }
+
+                // Brand ➔ Model Dropdown Hierarchy Selector
+                RadioBrandModelDropdowns(
+                    selectedRadio = selectedRadio,
+                    onSelectRadio = onSelectRadio
+                )
+
+                // Quick Action Buttons (Download, Upload, Save Codeplug)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = { showDownloadRadioDialog = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .testTag("dashboard_download_radio_btn")
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Download",
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { showUploadRadioDialog = true },
+                        enabled = channels.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .testTag("dashboard_upload_radio_btn")
+                    ) {
+                        Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Upload",
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Button(
+                        onClick = { showSaveCodeplugDialog = true },
+                        enabled = isCodeplugLoaded || channels.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .testTag("dashboard_save_codeplug_btn")
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Save Codeplug",
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+
+        // 2. MAIN CONTENT: DEFAULT BLANK SCREEN OR SIMPLE CODEPLUG CHANNEL LIST
+        if (!isCodeplugLoaded && channels.isEmpty()) {
+            // Default Blank Screen with Download from Radio or Open Saved Codeplug
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Radio,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = "No Active Codeplug Loaded",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Download a codeplug directly from your radio via USB OTG or Bluetooth, open a saved codeplug, or append a Channel Bank from Tab 1.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = { showDownloadRadioDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("blank_download_from_radio_btn")
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Download from Radio")
+                    }
+
+                    OutlinedButton(
+                        onClick = { showOpenCodeplugDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("blank_open_saved_codeplug_btn")
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Open Saved Codeplug")
+                    }
+                }
+            }
+        } else {
+            // Codeplug Header Strip (Radio Model + Open / Add Channel)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "$codeplugTitle • ${selectedRadio.model}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val rxOnlyExplanation = if (selectedRadio.supportsNativeRxOnly) {
+                        "RxOnly checked = Duplex OFF (TX Inhibited)"
+                    } else {
+                        "RxOnly checked = Low Power FRS1 (462.5625 MHz @ 0.5W) fallback"
+                    }
+                    Text(
+                        text = "${channels.size} / ${selectedRadio.maxChannels} ch • $rxOnlyExplanation",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = { showOpenCodeplugDialog = true },
+                        modifier = Modifier.testTag("header_open_codeplug_btn")
+                    ) {
+                        Text("Open")
+                    }
+                    TextButton(
+                        onClick = {
+                            isAddingNewChannel = true
+                            editingChannel = RadioChannel(
+                                number = channels.size + 1,
+                                name = "CH ${(channels.size + 1).toString().padStart(2, '0')}",
+                                rxFreqHz = 146520000L,
+                                txFreqHz = 146520000L,
+                                duplex = DuplexMode.SIMPLEX,
+                                offsetHz = 0L,
+                                rxTone = "None",
+                                txTone = "None",
+                                mode = "FM",
+                                power = PowerLevel.HIGH,
+                                rxOnly = false
+                            )
+                        },
+                        modifier = Modifier.testTag("codeplug_add_channel_btn")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Add Ch")
+                    }
+                }
+            }
+
+            // Simple, clean Channel List with Drag-and-Drop & Single RxOnly Checkbox
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("codeplug_channels_list"),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                itemsIndexed(
+                    items = channels,
+                    key = { _, ch -> "cp_${ch.number}_${ch.name}_${ch.rxFreqHz}" }
+                ) { index, channel ->
+                    val isDragging = draggedIndex == index
+                    val rowHeightPx = 150f
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(if (isDragging) 10f else 0f)
+                            .offset {
+                                IntOffset(
+                                    x = 0,
+                                    y = if (isDragging) dragOffsetY.roundToInt() else 0
+                                )
+                            }
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                isAddingNewChannel = false
+                                editingChannel = channel
+                            }
+                            .testTag("codeplug_channel_row_${channel.number}"),
+                        color = if (isDragging) {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    width = if (isDragging) 1.5.dp else 1.dp,
+                                    color = if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Drag Handle + Quick Up/Down Reorder
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .pointerInput(channels.size) {
+                                        detectVerticalDragGestures(
+                                            onDragStart = {
+                                                draggedIndex = index
+                                                dragOffsetY = 0f
+                                            },
+                                            onVerticalDrag = { change, dragAmount ->
+                                                change.consume()
+                                                dragOffsetY += dragAmount
+                                                val currentDragIdx = draggedIndex ?: return@detectVerticalDragGestures
+                                                if (dragOffsetY > rowHeightPx && currentDragIdx < channels.lastIndex) {
+                                                    onMoveChannel(currentDragIdx, currentDragIdx + 1)
+                                                    draggedIndex = currentDragIdx + 1
+                                                    dragOffsetY -= rowHeightPx
+                                                } else if (dragOffsetY < -rowHeightPx && currentDragIdx > 0) {
+                                                    onMoveChannel(currentDragIdx, currentDragIdx - 1)
+                                                    draggedIndex = currentDragIdx - 1
+                                                    dragOffsetY += rowHeightPx
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                draggedIndex = null
+                                                dragOffsetY = 0f
+                                            },
+                                            onDragCancel = {
+                                                draggedIndex = null
+                                                dragOffsetY = 0f
+                                            }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DragHandle,
+                                    contentDescription = "Drag to reorder",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            // Channel Slot Number
+                            Text(
+                                text = channel.number.toString().padStart(2, '0'),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = AmberVfoPrimary,
+                                modifier = Modifier.width(28.dp)
+                            )
+
+                            // Simple Channel Name & RX Frequency (Click row to see/edit PL, DPL, Offset, etc.)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = channel.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val subtleDetail = if (channel.rxOnly && !selectedRadio.supportsNativeRxOnly) {
+                                    "${channel.rxFreqMhzString} MHz (TX -> FRS1 0.5W)"
+                                } else {
+                                    "${channel.rxFreqMhzString} MHz"
+                                }
+                                Text(
+                                    text = subtleDetail,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (channel.rxOnly && !selectedRadio.supportsNativeRxOnly) {
+                                        FrsFallbackYellow
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+
+                            // Up/Down quick reorder buttons for precision
+                            IconButton(
+                                onClick = { if (index > 0) onMoveChannel(index, index - 1) },
+                                enabled = index > 0,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = "Move up",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { if (index < channels.lastIndex) onMoveChannel(index, index + 1) },
+                                enabled = index < channels.lastIndex,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = "Move down",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // SINGLE RxOnly Checkbox next to the channel
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        onToggleRxOnly(channel.number, !channel.rxOnly)
+                                    }
+                                    .padding(horizontal = 4.dp)
+                            ) {
+                                Checkbox(
+                                    checked = channel.rxOnly,
+                                    onCheckedChange = { checked ->
+                                        onToggleRxOnly(channel.number, checked)
+                                    },
+                                    modifier = Modifier.testTag("rx_only_checkbox_${channel.number}")
+                                )
+                                Text(
+                                    text = "RxOnly",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (channel.rxOnly) RxSafeGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Channel Specific Details Modal (Opened when clicking any channel in the codeplug)
+    if (editingChannel != null) {
+        ChannelDetailEditorModal(
+            initialChannel = editingChannel!!,
+            isNew = isAddingNewChannel,
+            selectedRadio = selectedRadio,
+            onDismiss = { editingChannel = null },
+            onDelete = if (!isAddingNewChannel) {
+                {
+                    val num = editingChannel!!.number
+                    editingChannel = null
+                    onDeleteChannel(num)
+                }
+            } else null,
+            onSave = { saved ->
+                val wasNew = isAddingNewChannel
+                editingChannel = null
+                onSaveOrAddChannel(saved, wasNew)
+            }
+        )
+    }
+
+    // Download from Radio Modal
+    if (showDownloadRadioDialog) {
+        HardwareTransferModal(
+            isDownload = true,
+            selectedRadio = selectedRadio,
+            isFlashing = isFlashing,
+            flashProgress = flashProgress,
+            flashLogs = flashLogs,
+            programmerManager = programmerManager,
+            onSelectRadio = onSelectRadio,
+            onExecute = { radio, transport, bleAddr, usbName ->
+                onDownloadFromRadio(programmerManager, radio, transport, bleAddr, usbName)
+            },
+            onDismiss = { showDownloadRadioDialog = false }
+        )
+    }
+
+    // Upload to Radio Modal
+    if (showUploadRadioDialog) {
+        HardwareTransferModal(
+            isDownload = false,
+            selectedRadio = selectedRadio,
+            isFlashing = isFlashing,
+            flashProgress = flashProgress,
+            flashLogs = flashLogs,
+            programmerManager = programmerManager,
+            onSelectRadio = onSelectRadio,
+            onExecute = { _, transport, bleAddr, usbName ->
+                onUploadToRadio(programmerManager, transport, bleAddr, usbName)
+            },
+            onDismiss = { showUploadRadioDialog = false }
+        )
+    }
+
+    // Save Codeplug Modal (Local and Cloud options when selected)
+    if (showSaveCodeplugDialog) {
+        SaveCodeplugModal(
+            initialName = codeplugTitle,
+            onDismiss = { showSaveCodeplugDialog = false },
+            onSaveLocal = { name ->
+                showSaveCodeplugDialog = false
+                onSaveLocal(name)
+            },
+            onSaveCloud = { name, shareCode, callsign, notes ->
+                showSaveCodeplugDialog = false
+                onSaveCloudCodeplug(name, shareCode, callsign, notes)
+            }
+        )
+    }
+
+    // Open Saved Codeplug Modal (Local, Cloud, or Remote Share Code)
+    if (showOpenCodeplugDialog) {
+        val localCodeplugs = remember { onListLocalCodeplugs() }
+        OpenSavedCodeplugModal(
+            localCodeplugs = localCodeplugs,
+            cloudCodeplugs = cloudSavedCodeplugs,
+            onDismiss = { showOpenCodeplugDialog = false },
+            onSelectLocal = { summary ->
+                showOpenCodeplugDialog = false
+                onOpenLocalCodeplug(summary)
+            },
+            onSelectCloud = { doc ->
+                showOpenCodeplugDialog = false
+                onOpenCloudCodeplug(doc)
+            },
+            onFetchRemoteShareCode = { code ->
+                showOpenCodeplugDialog = false
+                onOpenRemoteShareCode(code)
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ChannelDetailEditorModal(
+    initialChannel: RadioChannel,
+    isNew: Boolean,
+    selectedRadio: classSupportedRadioModel,
+    onDismiss: () -> Unit,
+    onDelete: (() -> Unit)? = null,
+    onSave: (RadioChannel) -> Unit
+) {
+    var name by remember { mutableStateOf(initialChannel.name) }
+    var rxMhzText by remember { mutableStateOf(initialChannel.rxFreqMhzString) }
+    var duplex by remember { mutableStateOf(initialChannel.duplex) }
+    var offsetMhzText by remember { mutableStateOf(initialChannel.offsetMhzString) }
+    var txMhzText by remember { mutableStateOf(initialChannel.txFreqMhzString) }
+    var toneType by remember {
+        mutableStateOf(
+            when {
+                initialChannel.rxTone.startsWith("D") -> "DPL (DCS)"
+                initialChannel.rxTone != "None" -> "PL (CTCSS)"
+                else -> "None"
+            }
+        )
+    }
+    var selectedPl by remember {
+        mutableStateOf(if (!initialChannel.rxTone.startsWith("D") && initialChannel.rxTone != "None") initialChannel.rxTone else "131.8")
+    }
+    var selectedDpl by remember {
+        mutableStateOf(if (initialChannel.rxTone.startsWith("D")) initialChannel.rxTone else "D023N")
+    }
+    var mode by remember { mutableStateOf(initialChannel.mode) }
+    var power by remember { mutableStateOf(initialChannel.power) }
+    var rxOnly by remember { mutableStateOf(initialChannel.rxOnly) }
+    var notes by remember { mutableStateOf(initialChannel.notes) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(if (isNew) "Add Channel" else "Channel #${initialChannel.number} Settings")
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete Channel",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(16) },
+                    label = { Text("Channel Name") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("modal_channel_name_input")
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = rxMhzText,
+                        onValueChange = { newRx ->
+                            rxMhzText = newRx
+                            val mhz = newRx.toDoubleOrNull()
+                            if (mhz != null && !rxOnly) {
+                                val calc = RepeaterOffsetCalculator.calculateStandardOffset(RadioChannel.mhzToHz(mhz))
+                                duplex = calc.duplex
+                                offsetMhzText = String.format(Locale.US, "%.3f", calc.offsetHz / 1_000_000.0)
+                                txMhzText = String.format(Locale.US, "%.4f", calc.txFreqHz / 1_000_000.0)
+                            }
+                        },
+                        label = { Text("RX Frequency (MHz)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("modal_channel_rx_input")
+                    )
+
+                    AssistChip(
+                        onClick = {
+                            val mhz = rxMhzText.toDoubleOrNull() ?: 146.520
+                            val calc = RepeaterOffsetCalculator.calculateStandardOffset(RadioChannel.mhzToHz(mhz))
+                            duplex = calc.duplex
+                            offsetMhzText = String.format(Locale.US, "%.3f", calc.offsetHz / 1_000_000.0)
+                            txMhzText = String.format(Locale.US, "%.4f", calc.txFreqHz / 1_000_000.0)
+                        },
+                        label = { Text("Auto Offset") }
+                    )
+                }
+
+                // Single RxOnly Checkbox inside modal as well
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable {
+                            rxOnly = !rxOnly
+                            if (rxOnly) {
+                                if (selectedRadio.supportsNativeRxOnly) {
+                                    duplex = DuplexMode.OFF
+                                } else {
+                                    duplex = DuplexMode.SPLIT
+                                    txMhzText = "462.5625"
+                                    power = PowerLevel.LOW
+                                }
+                            } else {
+                                val mhz = rxMhzText.toDoubleOrNull() ?: 146.520
+                                val calc = RepeaterOffsetCalculator.calculateStandardOffset(RadioChannel.mhzToHz(mhz))
+                                duplex = calc.duplex
+                                offsetMhzText = String.format(Locale.US, "%.3f", calc.offsetHz / 1_000_000.0)
+                                txMhzText = String.format(Locale.US, "%.4f", calc.txFreqHz / 1_000_000.0)
+                            }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Checkbox(
+                        checked = rxOnly,
+                        onCheckedChange = { checked ->
+                            rxOnly = checked
+                            if (checked) {
+                                if (selectedRadio.supportsNativeRxOnly) {
+                                    duplex = DuplexMode.OFF
+                                } else {
+                                    duplex = DuplexMode.SPLIT
+                                    txMhzText = "462.5625"
+                                    power = PowerLevel.LOW
+                                }
+                            }
+                        }
+                    )
+                    Column {
+                        Text(
+                            text = "RxOnly",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (selectedRadio.supportsNativeRxOnly) {
+                                "Disables transmit (Duplex = OFF) on ${selectedRadio.model}"
+                            } else {
+                                "${selectedRadio.model} has no native RX-only: programs TX to FRS1 (462.5625 MHz) @ Low Power"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Offset & Duplex Section
+                Text("Duplex / Repeater Offset", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    DuplexMode.entries.forEach { modeOpt ->
+                        FilterChip(
+                            selected = duplex == modeOpt,
+                            onClick = { duplex = modeOpt },
+                            label = { Text(modeOpt.display) }
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = offsetMhzText,
+                        onValueChange = { offsetMhzText = it },
+                        label = { Text("Offset (MHz)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = txMhzText,
+                        onValueChange = { txMhzText = it },
+                        label = { Text("TX Frequency (MHz)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // PL / DPL Tone Selection
+                Text("Tone Squelch (PL / DPL)", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("None", "PL (CTCSS)", "DPL (DCS)").forEach { tType ->
+                        FilterChip(
+                            selected = toneType == tType,
+                            onClick = { toneType = tType },
+                            label = { Text(tType) }
+                        )
+                    }
+                }
+
+                if (toneType == "PL (CTCSS)") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(AnalogRadioReferenceDirectory.standardCtcssTones.drop(1)) { pl ->
+                            FilterChip(
+                                selected = selectedPl == pl,
+                                onClick = { selectedPl = pl },
+                                label = { Text("$pl Hz") }
+                            )
+                        }
+                    }
+                } else if (toneType == "DPL (DCS)") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(AnalogRadioReferenceDirectory.standardDcsCodes.drop(1)) { dpl ->
+                            FilterChip(
+                                selected = selectedDpl == dpl,
+                                onClick = { selectedDpl = dpl },
+                                label = { Text(dpl) }
+                            )
+                        }
+                    }
+                }
+
+                // Power & Mode (Radio-dependent options)
+                Text("Transmit Power & Bandwidth (${selectedRadio.model})", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PowerLevel.entries.forEach { p ->
+                        FilterChip(
+                            selected = power == p,
+                            onClick = { power = p },
+                            label = { Text(p.wattsLabel) }
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("FM", "NFM", "AM").forEach { m ->
+                        FilterChip(
+                            selected = mode == m,
+                            onClick = { mode = m },
+                            label = { Text(if (m == "NFM") "NFM (12.5kHz)" else "$m (25kHz)") }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Comment / Notes") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val rxHz = RadioChannel.mhzToHz(rxMhzText.toDoubleOrNull() ?: 146.520)
+                    val offsetHz = RadioChannel.mhzToHz(offsetMhzText.toDoubleOrNull() ?: 0.0)
+                    val computedTxHz = when {
+                        rxOnly && !selectedRadio.supportsNativeRxOnly -> RadioChannel.FRS1_FALLBACK_HZ
+                        duplex == DuplexMode.PLUS -> rxHz + offsetHz
+                        duplex == DuplexMode.MINUS -> rxHz - offsetHz
+                        duplex == DuplexMode.SPLIT -> RadioChannel.mhzToHz(txMhzText.toDoubleOrNull() ?: (rxHz / 1_000_000.0))
+                        else -> rxHz
+                    }
+                    val finalTone = when (toneType) {
+                        "PL (CTCSS)" -> selectedPl
+                        "DPL (DCS)" -> selectedDpl
+                        else -> "None"
+                    }
+                    val finalDuplex = when {
+                        rxOnly && selectedRadio.supportsNativeRxOnly -> DuplexMode.OFF
+                        rxOnly && !selectedRadio.supportsNativeRxOnly -> DuplexMode.SPLIT
+                        else -> duplex
+                    }
+                    onSave(
+                        RadioChannel(
+                            number = initialChannel.number,
+                            name = name.ifBlank { "CH ${initialChannel.number}" },
+                            rxFreqHz = rxHz,
+                            txFreqHz = computedTxHz,
+                            duplex = finalDuplex,
+                            offsetHz = abs(computedTxHz - rxHz),
+                            rxTone = finalTone,
+                            txTone = if (rxOnly) "None" else finalTone,
+                            mode = mode,
+                            power = if (rxOnly) PowerLevel.LOW else power,
+                            rxOnly = rxOnly,
+                            notes = notes
+                        )
+                    )
+                },
+                modifier = Modifier.testTag("modal_save_channel_btn")
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun HardwareTransferModal(
+    isDownload: Boolean,
+    selectedRadio: classSupportedRadioModel,
+    isFlashing: Boolean,
+    flashProgress: Float,
+    flashLogs: List<String>,
+    programmerManager: HardwareProgrammerManager,
+    onSelectRadio: (classSupportedRadioModel) -> Unit,
+    onExecute: (classSupportedRadioModel, String, String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var transport by remember { mutableStateOf("Bluetooth LE") }
+    var usbCables by remember { mutableStateOf(programmerManager.scanUsbOtgDevices()) }
+    var selectedUsbDeviceName by remember { mutableStateOf(usbCables.firstOrNull()?.deviceName ?: "") }
+    val bleDevices = remember { mutableStateListOf<DetectedBleRadio>() }
+    var selectedBleAddress by remember { mutableStateOf("") }
+    var stopBleScanRef by remember { mutableStateOf<() -> Unit>({}) }
+    var bleStatus by remember { mutableStateOf("Tap 'Scan BLE' and select your Baofeng UV-5R Mini or Bluetooth programmer.") }
+
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants.values.all { it }) {
+            stopBleScanRef()
+            bleDevices.clear()
+            bleStatus = "Scanning BLE & Paired radios..."
+            stopBleScanRef = programmerManager.startBleScan(
+                onDeviceFound = { dev ->
+                    if (bleDevices.none { it.address == dev.address }) {
+                        bleDevices.add(dev)
+                        if (selectedBleAddress.isBlank() || dev.isRadioProgrammer) {
+                            selectedBleAddress = dev.address
+                        }
+                    }
+                },
+                onError = { err -> bleStatus = err }
+            )
+        } else {
+            bleStatus = "Bluetooth permission required."
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = {
+            stopBleScanRef()
+            onDismiss()
+        },
+        title = {
+            Text(if (isDownload) "Download Codeplug from Radio" else "Upload Codeplug to Radio")
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("1. Select Radio Model:", style = MaterialTheme.typography.labelLarge)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(RadioCatalog.allRadios, key = { it.id }) { radio ->
+                        FilterChip(
+                            selected = selectedRadio.id == radio.id,
+                            onClick = { onSelectRadio(radio) },
+                            label = { Text(radio.model) }
+                        )
+                    }
+                }
+
+                Text(
+                    text = selectedRadio.protocolNotes,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text("2. Connection Interface:", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = transport == "Bluetooth LE",
+                        onClick = { transport = "Bluetooth LE" },
+                        leadingIcon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        label = { Text("Bluetooth LE") }
+                    )
+                    FilterChip(
+                        selected = transport == "USB OTG Serial",
+                        onClick = {
+                            stopBleScanRef()
+                            transport = "USB OTG Serial"
+                            usbCables = programmerManager.scanUsbOtgDevices()
+                            if (selectedUsbDeviceName.isBlank()) {
+                                selectedUsbDeviceName = usbCables.firstOrNull()?.deviceName ?: ""
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Default.Usb, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        label = { Text("USB OTG Cable") }
+                    )
+                }
+
+                if (transport == "Bluetooth LE") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(bleStatus, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton(
+                            onClick = {
+                                val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+                                } else {
+                                    arrayOf(Manifest.permission.BLUETOOTH)
+                                }
+                                blePermissionLauncher.launch(perms)
+                            }
+                        ) {
+                            Text("Scan BLE")
+                        }
+                    }
+                    bleDevices.forEach { d ->
+                        val isSelected = selectedBleAddress == d.address
+                        Surface(
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedBleAddress = d.address }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = d.name,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else RxSafeGreen
+                                    )
+                                    Text(
+                                        text = "${d.address} • ${d.rssi} dBm",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (isSelected) {
+                                    Text("SELECTED", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (usbCables.isEmpty()) "No USB OTG cable detected." else "${usbCables.size} USB OTG adapter(s) ready.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = {
+                                usbCables = programmerManager.scanUsbOtgDevices()
+                                if (selectedUsbDeviceName.isBlank()) {
+                                    selectedUsbDeviceName = usbCables.firstOrNull()?.deviceName ?: ""
+                                }
+                            }
+                        ) {
+                            Text("Refresh USB")
+                        }
+                    }
+                    usbCables.forEach { c ->
+                        val isSelected = selectedUsbDeviceName == c.deviceName
+                        Surface(
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedUsbDeviceName = c.deviceName
+                                    if (!c.hasPermission) {
+                                        programmerManager.requestUsbPermission(c.deviceName)
+                                    }
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(c.chipsetName, style = MaterialTheme.typography.labelLarge, color = RxSafeGreen)
+                                    Text(
+                                        text = if (c.hasPermission) "USB Permission Granted" else "Tap to Grant USB Permission",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isFlashing || flashProgress > 0f) {
+                    LinearProgressIndicator(
+                        progress = { flashProgress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (flashLogs.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                            .padding(8.dp)
+                    ) {
+                        flashLogs.takeLast(8).forEach { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (line.startsWith("[ERROR]")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    stopBleScanRef()
+                    onExecute(selectedRadio, transport, selectedBleAddress, selectedUsbDeviceName)
+                },
+                enabled = !isFlashing,
+                modifier = Modifier.testTag("confirm_hardware_transfer_btn")
+            ) {
+                Text(if (isDownload) "Download from Radio" else "Upload to Radio")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    stopBleScanRef()
+                    onDismiss()
+                }
+            ) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun SaveCodeplugModal(
+    initialName: String,
+    onDismiss: () -> Unit,
+    onSaveLocal: (String) -> Unit,
+    onSaveCloud: (String, String, String, String) -> Unit
+) {
+    var saveDestination by remember { mutableStateOf("LOCAL") }
+    var name by remember { mutableStateOf(initialName) }
+    var shareCode by remember { mutableStateOf("") }
+    var callsign by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Save Codeplug") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = saveDestination == "LOCAL",
+                        onClick = { saveDestination = "LOCAL" },
+                        leadingIcon = { Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        label = { Text("Local Storage") },
+                        modifier = Modifier.testTag("save_option_local")
+                    )
+                    FilterChip(
+                        selected = saveDestination == "CLOUD",
+                        onClick = { saveDestination = "CLOUD" },
+                        leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        label = { Text("Cloud & Remote Share") },
+                        modifier = Modifier.testTag("save_option_cloud")
+                    )
+                }
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Codeplug Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (saveDestination == "CLOUD") {
+                    Text(
+                        text = "Optional: Set a Share Code (e.g. PLYM-FIRE-26) so others can remotely pull or update their codeplug.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = shareCode,
+                        onValueChange = { shareCode = it.uppercase() },
+                        label = { Text("Remote Share Code (Optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = callsign,
+                        onValueChange = { callsign = it },
+                        label = { Text("Author Callsign / Unit") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("Release / Update Notes") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (saveDestination == "LOCAL") {
+                        onSaveLocal(name)
+                    } else {
+                        onSaveCloud(name, shareCode, callsign, notes)
+                    }
+                },
+                modifier = Modifier.testTag("confirm_save_codeplug_btn")
+            ) {
+                Text(if (saveDestination == "LOCAL") "Save Locally" else "Save to Cloud")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun OpenSavedCodeplugModal(
+    localCodeplugs: List<LocalSavedCodeplugSummary>,
+    cloudCodeplugs: List<ZoneDocument>,
+    onDismiss: () -> Unit,
+    onSelectLocal: (LocalSavedCodeplugSummary) -> Unit,
+    onSelectCloud: (ZoneDocument) -> Unit,
+    onFetchRemoteShareCode: (String) -> Unit
+) {
+    var tab by remember { mutableStateOf("LOCAL") }
+    var shareCodeInput by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Open Saved Codeplug") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(340.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = tab == "LOCAL",
+                        onClick = { tab = "LOCAL" },
+                        label = { Text("Local (${localCodeplugs.size})") }
+                    )
+                    FilterChip(
+                        selected = tab == "CLOUD",
+                        onClick = { tab = "CLOUD" },
+                        label = { Text("Cloud (${cloudCodeplugs.size})") }
+                    )
+                    FilterChip(
+                        selected = tab == "REMOTE_CODE",
+                        onClick = { tab = "REMOTE_CODE" },
+                        label = { Text("Share Code") }
+                    )
+                }
+
+                when (tab) {
+                    "LOCAL" -> {
+                        if (localCodeplugs.isEmpty()) {
+                            Text(
+                                text = "No local codeplugs saved on this device yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(localCodeplugs, key = { it.id }) { cp ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onSelectLocal(cp) }
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Text(cp.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                            Text("${cp.channelCount} channels • ${cp.radioModel}", style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    "CLOUD" -> {
+                        if (cloudCodeplugs.isEmpty()) {
+                            Text(
+                                text = "No cloud codeplugs saved to your account yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(cloudCodeplugs, key = { it.id }) { doc ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onSelectCloud(doc) }
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Text(doc.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = "${doc.channelSpecs.size} channels • ${doc.targetRadioModel}",
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    "REMOTE_CODE" -> {
+                        Text(
+                            text = "Enter a shared codeplug ID (e.g. PLYM-FIRE-26) to pull or update from another operator.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = shareCodeInput,
+                            onValueChange = { shareCodeInput = it.uppercase() },
+                            label = { Text("Remote Share Code") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            onClick = { onFetchRemoteShareCode(shareCodeInput) },
+                            enabled = shareCodeInput.length >= 3,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Open Remote Codeplug")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}

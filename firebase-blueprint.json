@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "Zone": {
+      "title": "Zone",
+      "description": "A custom radio channel set/zone with repeater offset configuration and RX/TX safety profile.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the authenticated owner."
+        },
+        "name": {
+          "type": "string",
+          "description": "Zone display name (e.g., Plymouth County Police, Plymouth County Fire)."
+        },
+        "region": {
+          "type": "string",
+          "description": "Geographic region or county."
+        },
+        "category": {
+          "type": "string",
+          "description": "Service category (Law Enforcement, Fire / EMS, Amateur / Repeater, NOAA / Marine, FRS / GMRS / MURS, Custom)."
+        },
+        "safetyProfile": {
+          "type": "string",
+          "enum": ["STANDARD_TX", "RX_ONLY_INHIBIT", "SAFE_TX_FALLBACK_FRS1"],
+          "description": "Transmit safety profile applied when programming radios."
+        },
+        "targetRadioModel": {
+          "type": "string",
+          "description": "Target radio model profile (e.g., Baofeng UV-5R Mini, Quansheng UV-K5)."
+        },
+        "shareCode": {
+          "type": "string",
+          "description": "Optional remote share code linked to /shared_codeplugs/{shareCode}."
+        },
+        "version": {
+          "type": "integer",
+          "description": "Codeplug revision number for remote sync tracking."
+        },
+        "channelSpecs": {
+          "type": "array",
+          "description": "Bounded list (<= 100) of pipe-delimited channel specification records."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "name",
+        "region",
+        "category",
+        "safetyProfile",
+        "targetRadioModel",
+        "shareCode",
+        "version",
+        "channelSpecs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SharedCodeplug": {
+      "title": "SharedCodeplug",
+      "description": "A remotely shareable radio codeplug configuration identified by shareCode so field operators can pull or sync remote updates.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the authenticated publisher."
+        },
+        "authorCallsign": {
+          "type": "string",
+          "description": "Callsign or unit identifier of the publisher (non-PII)."
+        },
+        "shareCode": {
+          "type": "string",
+          "description": "Unique alphanumeric share code matching the document ID."
+        },
+        "name": {
+          "type": "string",
+          "description": "Zone/codeplug title."
+        },
+        "region": {
+          "type": "string",
+          "description": "County or operational area."
+        },
+        "category": {
+          "type": "string",
+          "description": "Service category."
+        },
+        "safetyProfile": {
+          "type": "string",
+          "enum": ["STANDARD_TX", "RX_ONLY_INHIBIT", "SAFE_TX_FALLBACK_FRS1"],
+          "description": "Safety profile enforced by this shared codeplug."
+        },
+        "targetRadioModel": {
+          "type": "string",
+          "description": "Recommended radio model."
+        },
+        "version": {
+          "type": "integer",
+          "description": "Version counter incremented on remote codeplug updates."
+        },
+        "releaseNotes": {
+          "type": "string",
+          "description": "Notes describing frequency or tone changes in this update."
+        },
+        "channelSpecs": {
+          "type": "array",
+          "description": "Bounded list (<= 100) of pipe-delimited channel specification records."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of initial publication (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest remote push (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "authorCallsign",
+        "shareCode",
+        "name",
+        "region",
+        "category",
+        "safetyProfile",
+        "targetRadioModel",
+        "version",
+        "releaseNotes",
+        "channelSpecs",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/zones/{zoneId}": {
+      "schema": { "$ref": "#/entities/Zone" },
+      "description": "User-owned custom channel sets and regional scanner/responder zones."
+    },
+    "/shared_codeplugs/{shareCode}": {
+      "schema": { "$ref": "#/entities/SharedCodeplug" },
+      "description": "Remotely shared codeplugs accessible by shareCode for over-the-air codeplug updates."
+    }
+  }
+}
