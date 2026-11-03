@@ -894,6 +894,7 @@ class HardwareProgrammerManager(private val context: Context) {
                     onProgress(1f, "[VERIFIED] No channel changes; no write commands sent.")
                     return@withContext
                 }
+                throw IOException("Changed uploads temporarily blocked while bank import transmit settings are checked. No write commands sent.")
                 android.util.Log.i("ChirpBluetooth", "Mini upload: ${addresses.size} changed blocks; full read-back required")
                 for ((index,address) in addresses.withIndex()) {
                     val payload = desired.copyOfRange(address,address+128)

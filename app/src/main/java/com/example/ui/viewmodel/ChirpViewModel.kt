@@ -327,7 +327,7 @@ class ChirpViewModel(
             _codeplugChannels.value = _codeplugChannels.value
                 .take(radio.maxChannels)
                 .mapIndexed { idx, ch ->
-                    if (radio.model.contains("UV-5R Mini")) ch else if (radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                    if (radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
         }
         _statusBanner.value = "Radio set to ${radio.model} (Max ${radio.maxChannels} ch)."
@@ -362,11 +362,7 @@ class ChirpViewModel(
                 targetRadio = radio
             )
         } else {
-            SafetyProfileEngine.applySafetyProfileToChannel(
-                channel = channel,
-                safetyProfile = SafetyProfile.STANDARD_TX,
-                targetRadio = radio
-            )
+            channel.copy(rxOnly = false)
         }
     }
 
@@ -449,7 +445,7 @@ class ChirpViewModel(
                     }
                 )
                 _codeplugChannels.value = downloadedChannels.mapIndexed { idx, ch ->
-                    normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                    if (radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
                 _codeplugTitle.value = "${radio.model} Codeplug"
                 _isCodeplugLoaded.value = true
