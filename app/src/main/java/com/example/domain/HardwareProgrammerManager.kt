@@ -894,7 +894,13 @@ class HardwareProgrammerManager(private val context: Context) {
                     onProgress(1f, "[VERIFIED] No channel changes; no write commands sent.")
                     return@withContext
                 }
-                throw IOException("Changed uploads temporarily blocked while bank import transmit settings are checked. No write commands sent.")
+                val changedBytes = original.indices.filter { original[it] != desired[it] }
+                val recoveryOnly = changedBytes.all { offset ->
+                    val slot = offset / 32
+                    slot in 0..21 && offset % 32 in 4..7 &&
+                        desired.copyOfRange(slot*32,slot*32+4).contentEquals(desired.copyOfRange(slot*32+4,slot*32+8))
+                }
+                if (!recoveryOnly) throw IOException("Only the targeted simplex TX recovery is enabled. Other changed uploads remain blocked; no write commands sent.")
                 android.util.Log.i("ChirpBluetooth", "Mini upload: ${addresses.size} changed blocks; full read-back required")
                 for ((index,address) in addresses.withIndex()) {
                     val payload = desired.copyOfRange(address,address+128)
