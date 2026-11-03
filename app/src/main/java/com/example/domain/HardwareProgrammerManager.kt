@@ -894,7 +894,7 @@ class HardwareProgrammerManager(private val context: Context) {
                     onProgress(1f, "[VERIFIED] No channel changes; no write commands sent.")
                     return@withContext
                 }
-                throw IOException("Read-only rehearsal: ${addresses.size} changed blocks detected. Writes remain disabled; no write commands sent.")
+                android.util.Log.i("ChirpBluetooth", "Mini upload: ${addresses.size} changed blocks; full read-back required")
                 for ((index,address) in addresses.withIndex()) {
                     val payload = desired.copyOfRange(address,address+128)
                     val key = byteArrayOf(0x43,0x4f,0x20,0x37)
@@ -913,6 +913,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 readMini(transport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[VERIFY] $message") }, initialize = false)
                 val actual = checkNotNull(lastMiniImage)
                 if (!desired.contentEquals(actual)) throw IOException("Mini read-back differs from the intended memory image. Backup retained; upload is not verified.")
+                android.util.Log.i("ChirpBluetooth", "[VERIFIED] Mini channel changes read back correctly; other memory preserved.")
                 onProgress(1f,"[VERIFIED] Mini channel changes read back correctly; other memory preserved.")
                 return@withContext
             }
