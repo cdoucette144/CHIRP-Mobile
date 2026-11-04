@@ -5,13 +5,21 @@ import java.util.Locale
 
 /** Overlay editable fields on the Mini's 32-byte records; preserve all other bytes. */
 object MiniChannelPatch {
-    fun apply(original: ByteArray, channels: List<RadioChannel>): ByteArray {
-        require(original.size == 0x8240) { "Full Mini image required" }
+    fun apply(original: ByteArray, channels: List<RadioChannel>): ByteArray =
+        patch(original, channels, 999, null, emptyMap())
+
+    internal fun applyUv32(original: ByteArray, channels: List<RadioChannel>, changedSlots: Set<Int>, baseline: Map<Int, RadioChannel>): ByteArray =
+        patch(original, channels, 1000, changedSlots, baseline)
+
+    private fun patch(original: ByteArray, channels: List<RadioChannel>, slotCount: Int, changedSlots: Set<Int>?, baseline: Map<Int, RadioChannel>): ByteArray {
+        val uv32 = slotCount == 1000
+        require(original.size == (if (uv32) 0x8380 else 0x8240)) { "Full Mini image required" }
         require(channels.map { it.number }.distinct().size == channels.size) { "Duplicate channel slots" }
-        require(channels.all { it.number in 1..999 }) { "Mini slots must be 1–999" }
+        require(channels.all { it.number in 1..slotCount }) { "Mini slots must be 1–999" }
         val result = original.copyOf()
         val bySlot = channels.associateBy { it.number }
-        for (slot in 1..999) {
+        for (slot in 1..slotCount) {
+            if (changedSlots != null && slot !in changedSlots) continue
             val at = (slot - 1) * 32
             val ch = bySlot[slot]
             if (ch == null) {
@@ -40,19 +48,23 @@ object MiniChannelPatch {
                 result[offset] = value.toByte()
                 result[offset+1] = (value shr 8).toByte()
             }
-            require(ch.power != PowerLevel.MID) { "Mini supports High or Low power" }
-            frequency(at, ch.rxFreqHz)
-            if (ch.duplex == DuplexMode.OFF) result.fill(0xff.toByte(), at+4, at+8)
+            require(uv32 || ch.power != PowerLevel.MID) { "Mini supports High or Low power" }
+            val previous = baseline[slot]
+            if (previous?.rxFreqHz != ch.rxFreqHz) frequency(at, ch.rxFreqHz)
+            if (previous != null && previous.duplex == ch.duplex && previous.txFreqHz == ch.txFreqHz) {
+                // Keep the original transmitter field when editing unrelated channel settings.
+            } else if (ch.duplex == DuplexMode.OFF) result.fill(0xff.toByte(), at+4, at+8)
             else {
-                require(ch.mode != "AM" && ch.txFreqHz in 136000000L..174000000L ||
+                require((uv32 && ch.mode != "AM" && (ch.txFreqHz in 220000000L..260000000L || ch.txFreqHz in 350000000L..390000000L || ch.txFreqHz in 400000000L..520000000L)) ||
+                    ch.mode != "AM" && ch.txFreqHz in 136000000L..174000000L ||
                     ch.mode != "AM" && ch.txFreqHz in 400000000L..480000000L) { "Channel ${ch.number} (${ch.name}): Mini TX ${ch.txFreqHz / 1000000.0} MHz / ${ch.mode} unsupported; RX ${ch.rxFreqHz / 1000000.0} MHz" }
                 frequency(at+4, ch.txFreqHz)
             }
-            tone(at+8, ch.rxTone)
-            tone(at+10, ch.txTone)
+            if (previous?.rxTone != ch.rxTone) tone(at+8, ch.rxTone)
+            if (previous?.txTone != ch.txTone) tone(at+10, ch.txTone)
             val oldLow = (original[at+14].toInt() and 3) == 1
-            if (original[at] == 0xff.toByte() || oldLow != (ch.power == PowerLevel.LOW)) result[at+14] = ((result[at+14].toInt() and 0xfc) or if(ch.power == PowerLevel.LOW) 1 else 0).toByte()
-            if(ch.mode != "AM") result[at+15] = ((result[at+15].toInt() and 0xbf) or if(ch.mode == "FM") 0x40 else 0).toByte()
+            if ((uv32 && previous?.power != ch.power) || original[at] == 0xff.toByte() || oldLow != (ch.power == PowerLevel.LOW)) result[at+14] = ((result[at+14].toInt() and 0xfc) or when (ch.power) { PowerLevel.LOW -> 1; PowerLevel.MID -> 2; else -> 0 }).toByte()
+            if(ch.mode != "AM" && previous?.mode != ch.mode) result[at+15] = ((result[at+15].toInt() and 0xbf) or if(ch.mode == "FM") 0x40 else 0).toByte()
             fun flag(mask: Int, enabled: Boolean?) {
                 if(enabled!=null) result[at+15] = ((result[at+15].toInt() and mask.inv()) or if(enabled) mask else 0).toByte()
             }

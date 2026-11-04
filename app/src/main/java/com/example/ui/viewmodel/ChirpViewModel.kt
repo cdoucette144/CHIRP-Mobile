@@ -643,6 +643,7 @@ class ChirpViewModel(
                     bleAddress = bleAddress,
                     usbDeviceName = usbDeviceName,
                     channels = channels,
+                    settings = _radioSettings.value,
                     onProgress = { pct, line ->
                         _flashProgress.value = pct
                         _flashLogs.value = _flashLogs.value + line
@@ -655,7 +656,7 @@ class ChirpViewModel(
                     errorReason = "",
                     lastFailedAction = ""
                 )
-                _statusBanner.value = if (radio.model.contains("UV-5R Mini")) "Upload reconnect check passed. Power-cycle radio, then Download to verify persistence." else "Uploaded ${channels.size} channels & settings to ${radio.model}!"
+                _statusBanner.value = if (radio.model.contains("UV-5R Mini")) "Upload reconnect check passed. Power-cycle radio, then Download to verify persistence." else if (radio.id == "baofeng_uv32") "UV-32 upload check passed. Power-cycle and download to confirm persistence." else "Uploaded ${channels.size} channels to ${radio.model}."
             } catch (e: Exception) {
                 val msg = e.localizedMessage ?: "Hardware clone write failed."
                 _flashLogs.value = _flashLogs.value + "[ERROR] $msg"

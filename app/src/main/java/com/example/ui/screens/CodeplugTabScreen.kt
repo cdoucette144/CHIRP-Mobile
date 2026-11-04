@@ -102,6 +102,7 @@ import kotlin.math.abs
 
 @Composable
 fun CodeplugTabScreen(
+    programmerManager: HardwareProgrammerManager,
     isCodeplugLoaded: Boolean,
     codeplugTitle: String,
     channels: List<RadioChannel>,
@@ -133,7 +134,6 @@ fun CodeplugTabScreen(
     onOpenRemoteShareCode: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val programmerManager = remember(context) { HardwareProgrammerManager(context) }
 
     var showDownloadRadioDialog by remember { mutableStateOf(false) }
     var showUploadRadioDialog by remember { mutableStateOf(false) }
@@ -265,7 +265,7 @@ fun CodeplugTabScreen(
 
                         OutlinedButton(
                             onClick = { showUploadRadioDialog = true },
-                            enabled = channels.isNotEmpty() && selectedRadio.id != "baofeng_uv32",
+                            enabled = channels.isNotEmpty(),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             modifier = Modifier
                                 .weight(1f)
@@ -1087,7 +1087,7 @@ private fun HardwareTransferModal(
                 )
 
                 if (selectedRadio.id == "baofeng_uv32") {
-                    Text("UV-32 test mode supports Bluetooth downloads. Turn on Wireless CPS and close Ola before connecting.")
+                    Text("Turn on Wireless CPS and close Ola before connecting. Download from this UV-32 before uploading.")
                 }
                 if (selectedRadio.id != "baofeng_uv32") {
                     val connections = listOf("Bluetooth", "USB cable")
@@ -1242,7 +1242,7 @@ private fun HardwareTransferModal(
                     onExecute(selectedRadio, transport, selectedBleAddress, selectedUsbDeviceName)
                 },
                 enabled = !isFlashing &&
-                    (selectedRadio.id != "baofeng_uv32" || (isDownload && transport == "Bluetooth LE")) &&
+                    (selectedRadio.id != "baofeng_uv32" || transport == "Bluetooth LE") &&
                     (if (transport == "Bluetooth LE") selectedBleAddress.isNotBlank() else selectedUsbDeviceName.isNotBlank()),
                 modifier = Modifier.testTag("confirm_hardware_transfer_btn")
             ) {

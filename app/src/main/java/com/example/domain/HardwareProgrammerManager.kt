@@ -114,6 +114,9 @@ interface RadioSerialTransport {
 
 class HardwareProgrammerManager(private val context: Context) {
     private var lastMiniImage: ByteArray? = null
+    private var lastUv32Image: ByteArray? = null
+    private var lastUv32Extras: ByteArray? = null
+    private var uv32Baseline: Triple<String, ByteArray, List<RadioChannel>>? = null
     var lastUv32Settings: com.example.data.model.Uv32SettingsSnapshot? = null
         private set
     var lastPersistenceMessage: String? = null
@@ -825,6 +828,7 @@ class HardwareProgrammerManager(private val context: Context) {
             if (uv32) {
                 val channels = readColorClone(transport, onProgress, uv32 = true)
                 MiniSessionExit.finish(transport, reconnectWaitMs = 0)
+                uv32Baseline = Triple(bleAddress, checkNotNull(lastUv32Image).copyOf(), channels)
                 return@withContext channels
             }
             if (radio.model.contains("UV-5R Mini")) {
@@ -929,9 +933,14 @@ class HardwareProgrammerManager(private val context: Context) {
         bleAddress: String,
         usbDeviceName: String,
         channels: List<RadioChannel>,
+        settings: com.example.data.model.RadioSettingsState,
         onProgress: (Float, String) -> Unit
     ) = withContext(Dispatchers.IO) {
-        if (radio.id == "baofeng_uv32") throw IOException("UV-32 upload is unavailable in this test build.")
+        if (radio.id == "baofeng_uv32") {
+            require(transportMode == "Bluetooth LE") { "Use Bluetooth to upload to the UV-32." }
+            uploadUv32(bleAddress, channels, settings, onProgress)
+            return@withContext
+        }
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress) { line -> onProgress(0.08f, line) }
@@ -1055,7 +1064,82 @@ class HardwareProgrammerManager(private val context: Context) {
     /** Mini protocol reference: CHIRP baofeng_uv17Pro.py, UV5RMini.
      * Read-only: preserve the complete decrypted image before decoding channels.
      */
-    private suspend fun readColorClone(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true, uv32: Boolean = false): List<RadioChannel> {
+    private suspend fun uploadUv32(
+        address: String,
+        channels: List<RadioChannel>,
+        settings: com.example.data.model.RadioSettingsState,
+        progress: (Float, String) -> Unit
+    ) {
+        val baseline = requireNotNull(uv32Baseline) { "Download from the UV-32 before uploading." }
+        require(address == baseline.first) { "Select the same UV-32 you downloaded from." }
+        val before = baseline.third.associateBy { it.number }
+        val after = channels.associateBy { it.number }
+        require(after.size == channels.size) { "Duplicate channel slots." }
+        val edits = (before.keys + after.keys).filter { before[it] != after[it] }.toSet()
+        val transport = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.03f, it) }
+        try {
+            readColorClone(transport, { pct, msg -> progress(pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = true)
+            val original = checkNotNull(lastUv32Image)
+            val extras = checkNotNull(lastUv32Extras)
+            require(original.contentEquals(baseline.second)) { "Radio memory changed since download. Download again before uploading." }
+            require(edits.none { it in 1..1000 && it !in before && original[(it - 1) * 32] != 0xff.toByte() }) {
+                "An edited slot contains an unreadable channel. Choose a different slot."
+            }
+            val channelImage = MiniChannelPatch.applyUv32(original, channels, edits, before)
+            val desired = Uv32SettingsPatch.apply(channelImage, settings)
+            if (desired.contentEquals(original)) {
+                MiniSessionExit.finish(transport, reconnectWaitMs = 0)
+                progress(1f, "No changes to upload.")
+                return
+            }
+
+            // Ola's Bluetooth write ranges. Bytes outside the CHIRP image come from the fresh read.
+            val blocks = buildList<Pair<Int, ByteArray>> {
+                for (at in 0 until 0x7d00 step 64) add(at to desired.copyOfRange(at, at + 64))
+                add(0x8000 to desired.copyOfRange(0x8000, 0x8040))
+                add(0x8040 to extras.copyOfRange(0, 64))
+                add(0x9000 to desired.copyOfRange(0x8040, 0x8080))
+                add(0x9040 to extras.copyOfRange(64, 128))
+                for (offset in 0 until 0x02c0 step 64)
+                    add(0xa000 + offset to desired.copyOfRange(0x8080 + offset, 0x8080 + offset + 64))
+                for (offset in 0 until 192 step 64)
+                    add(0xa2c0 + offset to extras.copyOfRange(128 + offset, 192 + offset))
+            }
+            uv32Baseline = null
+            val key = intArrayOf(0x43, 0x4f, 0x20, 0x37)
+            for ((index, block) in blocks.withIndex()) {
+                val (at, payload) = block
+                payload.indices.forEach { i ->
+                    val value = payload[i].toInt() and 255
+                    val k = key[i % 4]
+                    if (k != 32 && value != 0 && value != 255 && value != k && value != (k xor 255)) {
+                        payload[i] = (value xor k).toByte()
+                    }
+                }
+                transport.writeBytes(byteArrayOf(0x57, (at shr 8).toByte(), at.toByte(), 0x40) + payload)
+                if (!transport.readBytes(1, 4000L).contentEquals(byteArrayOf(6))) {
+                    throw IOException("UV-32 write failed at %04X. Backup retained.".format(at))
+                }
+                progress(0.33f + 0.33f * (index + 1) / blocks.size, "Writing UV-32 block %04X".format(at))
+            }
+            MiniSessionExit.finish(transport)
+            val verify = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.66f, it) }
+            try {
+                readColorClone(verify, { pct, msg -> progress(0.66f + pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = true)
+                val matches = desired.contentEquals(checkNotNull(lastUv32Image)) &&
+                    extras.contentEquals(checkNotNull(lastUv32Extras))
+                MiniSessionExit.finish(verify, reconnectWaitMs = 0)
+                if (!matches) throw IOException("UV-32 read-back differs from the upload. Backups retained.")
+                progress(1f, "UV-32 upload verified after reconnecting.")
+            } finally {
+                verify.close()
+            }
+        } finally {
+            transport.close()
+        }
+    }
+
+    private suspend fun readColorClone(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true, uv32: Boolean = false, includeUv32Extras: Boolean = false): List<RadioChannel> {
         val model = if (uv32) "UV-32" else "Mini"
         suspend fun exchange(command: ByteArray, length: Int, label: String): ByteArray {
             android.util.Log.i("ChirpBluetooth", "$model $label TX=" + command.joinToString(" ") { "%02X".format(it) })
@@ -1087,8 +1171,9 @@ class HardwareProgrammerManager(private val context: Context) {
         val key = byteArrayOf(0x43,0x4f,0x20,0x37)
         val ranges = if (uv32) listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x02c0, 0xd000 to 0x0040)
             else listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x01c0)
-        val total = ranges.sumOf { it.second }
-        for ((start, size) in ranges) {
+        val readRanges = if (includeUv32Extras) ranges + listOf(0x8040 to 64, 0x9040 to 64, 0xa2c0 to 192) else ranges
+        val total = readRanges.sumOf { it.second }
+        for ((start, size) in readRanges) {
             for (address in start until start + size step 64) {
                 val reply = exchange(byteArrayOf(0x52,(address shr 8).toByte(),address.toByte(),0x40),68,"read %04X".format(address))
                 if (reply[0] != 0x57.toByte() && reply[0] != 0x52.toByte()) throw IOException("Mini invalid read response header at %04X".format(address))
@@ -1103,12 +1188,17 @@ class HardwareProgrammerManager(private val context: Context) {
                 onProgress(0.15f + 0.80f * image.size() / total, "[$model READ %04X] %d / %d bytes".format(address, image.size(), total))
             }
         }
-        val bytes = image.toByteArray()
-        if (uv32) lastUv32Settings = com.example.data.model.Uv32SettingsSnapshot.fromImage(bytes)
-        else lastMiniImage = bytes.copyOf()
+        val captured = image.toByteArray()
+        val bytes = if (includeUv32Extras) captured.copyOf(0x8380) else captured
+        if (uv32) {
+            lastUv32Image = bytes
+            lastUv32Extras = if (includeUv32Extras) captured.copyOfRange(0x8380, captured.size) else null
+            lastUv32Settings = com.example.data.model.Uv32SettingsSnapshot.fromImage(bytes)
+        } else lastMiniImage = bytes.copyOf()
         val backup = java.io.File(context.filesDir, if (uv32) "uv32-backups" else "mini-backups").apply { mkdirs() }
         val file = java.io.File(backup, "${if (uv32) "uv32" else "uv5r-mini"}-${System.currentTimeMillis()}.bin")
         file.writeBytes(bytes)
+        if (includeUv32Extras) java.io.File(backup, file.nameWithoutExtension + "-extra.bin").writeBytes(checkNotNull(lastUv32Extras))
         val invalidSlots = mutableListOf<Int>()
         val channels = (0 until (if (uv32) 1000 else 999)).mapNotNull { slot ->
             val offset = slot * 32

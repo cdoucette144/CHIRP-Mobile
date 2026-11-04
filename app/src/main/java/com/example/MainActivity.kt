@@ -148,6 +148,7 @@ fun AuthenticatedFieldWorkspace(
     onPaletteChange: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val programmerManager = remember(context) { com.example.domain.HardwareProgrammerManager(context) }
     val coroutineScope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
 
@@ -372,6 +373,7 @@ fun AuthenticatedFieldWorkspace(
                         }
                         MainTab.CODEPLUG -> {
                             CodeplugTabScreen(
+                                programmerManager = programmerManager,
                                 isCodeplugLoaded = isCodeplugLoaded,
                                 codeplugTitle = codeplugTitle,
                                 channels = codeplugChannels,
