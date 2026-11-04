@@ -1087,7 +1087,7 @@ private fun HardwareTransferModal(
                 )
 
                 if (selectedRadio.id == "baofeng_uv32") {
-                    Text("Turn on Wireless CPS and close Ola before connecting. Download from this UV-32 before uploading.")
+                    Text("For Bluetooth, turn on Wireless CPS and close Ola. Download from this UV-32 using the same connection before uploading.")
                 }
                 if (selectedRadio.id != "radtel_rt950_pro") {
                     val connections = listOf("Bluetooth", "USB cable")
@@ -1245,7 +1245,7 @@ private fun HardwareTransferModal(
                 },
                 enabled = !isFlashing &&
                     (selectedRadio.id != "radtel_rt950_pro" || (isDownload && transport == "Bluetooth LE")) &&
-                    (selectedRadio.id !in setOf("baofeng_uv32", "baofeng_uv5_mini") || isDownload || transport == "Bluetooth LE") &&
+                    (selectedRadio.id != "baofeng_uv5_mini" || isDownload || transport == "Bluetooth LE") &&
                     (if (transport == "Bluetooth LE") selectedBleAddress.isNotBlank() else selectedUsbDeviceName.isNotBlank()),
                 modifier = Modifier.testTag("confirm_hardware_transfer_btn")
             ) {

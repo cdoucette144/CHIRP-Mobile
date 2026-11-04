@@ -123,7 +123,14 @@ class HardwareProgrammerManager(private val context: Context) {
         private set
     var lastRt950Settings: Map<String, String> = emptyMap()
         private set
-    private var uv32Baseline: Triple<String, ByteArray, List<RadioChannel>>? = null
+    private data class Uv32Baseline(
+        val bluetooth: Boolean,
+        val device: String,
+        val image: ByteArray,
+        val channels: List<RadioChannel>
+    )
+    private var uv32Baseline: Uv32Baseline? = null
+    private val uv32WiredRanges = listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x02c0, 0xd000 to 0x0040)
     var lastUv32Settings: com.example.data.model.Uv32SettingsSnapshot? = null
         private set
     var lastPersistenceMessage: String? = null
@@ -717,8 +724,8 @@ class HardwareProgrammerManager(private val context: Context) {
         return object : RadioSerialTransport {
             override suspend fun writeBytes(data: ByteArray) = withContext(Dispatchers.IO) {
                 val written = connection.bulkTransfer(bulkOut, data, data.size, 1500)
-                if (written < 0) {
-                    throw IOException("USB bulkTransfer write failed (result=$written).")
+                if (written != data.size) {
+                    throw IOException("USB write sent $written of ${data.size} bytes.")
                 }
             }
 
@@ -896,9 +903,11 @@ class HardwareProgrammerManager(private val context: Context) {
             if (uv32) {
                 val channels = readColorClone(transport, onProgress, uv32 = true)
                 MiniSessionExit.finish(transport, reconnectWaitMs = 0)
-                if (transportMode == "Bluetooth LE") {
-                    uv32Baseline = Triple(bleAddress, checkNotNull(lastUv32Image).copyOf(), channels)
-                } else uv32Baseline = null
+                val bluetooth = transportMode == "Bluetooth LE"
+                uv32Baseline = Uv32Baseline(
+                    bluetooth, if (bluetooth) bleAddress else usbDeviceName,
+                    checkNotNull(lastUv32Image).copyOf(), channels
+                )
                 return@withContext channels
             }
             if (radio.model.contains("UV-5R Mini")) {
@@ -1009,8 +1018,8 @@ class HardwareProgrammerManager(private val context: Context) {
         require(radio.id != "radtel_rt950_pro") { "RT-950 Pro currently supports download only." }
         require(radio.id != "baofeng_uv5_mini" || transportMode == "Bluetooth LE") { "Mini cable support is download-only for now." }
         if (radio.id == "baofeng_uv32") {
-            require(transportMode == "Bluetooth LE") { "Use Bluetooth to upload to the UV-32." }
-            uploadUv32(bleAddress, channels, settings, onProgress)
+            val bluetooth = transportMode == "Bluetooth LE"
+            uploadUv32(bluetooth, if (bluetooth) bleAddress else usbDeviceName, channels, settings, onProgress)
             return@withContext
         }
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
@@ -1150,23 +1159,31 @@ class HardwareProgrammerManager(private val context: Context) {
     }
 
     private suspend fun uploadUv32(
-        address: String,
+        bluetooth: Boolean,
+        device: String,
         channels: List<RadioChannel>,
         settings: com.example.data.model.RadioSettingsState,
         progress: (Float, String) -> Unit
     ) {
         val baseline = requireNotNull(uv32Baseline) { "Download from the UV-32 before uploading." }
-        require(address == baseline.first) { "Select the same UV-32 you downloaded from." }
-        val before = baseline.third.associateBy { it.number }
+        require(bluetooth == baseline.bluetooth && device == baseline.device) {
+            "Download from the UV-32 using this connection before uploading."
+        }
+        val before = baseline.channels.associateBy { it.number }
         val after = channels.associateBy { it.number }
         require(after.size == channels.size) { "Duplicate channel slots." }
         val edits = (before.keys + after.keys).filter { before[it] != after[it] }.toSet()
-        var transport = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.03f, it) }
+        var transport = if (bluetooth) {
+            openBleOrSppTransport(device, configureUv32Baud = true) { progress(0.03f, it) }
+        } else openUsbOtgTransport(device, 115200) { progress(0.03f, it) }
+        suspend fun reconnect(at: Float): RadioSerialTransport = if (bluetooth) {
+            reconnectUv32(device) { progress(at, it) }
+        } else openUsbOtgTransport(device, 115200) { progress(at, it) }
         try {
-            readColorClone(transport, { pct, msg -> progress(pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = true)
+            readColorClone(transport, { pct, msg -> progress(pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = bluetooth)
             val original = checkNotNull(lastUv32Image)
-            val extras = checkNotNull(lastUv32Extras)
-            require(original.contentEquals(baseline.second)) { "Radio memory changed since download. Download again before uploading." }
+            val extras = lastUv32Extras
+            require(original.contentEquals(baseline.image)) { "Radio memory changed since download. Download again before uploading." }
             require(edits.none { it in 1..1000 && it !in before && original[(it - 1) * 32] != 0xff.toByte() }) {
                 "An edited slot contains an unreadable channel. Choose a different slot."
             }
@@ -1180,18 +1197,29 @@ class HardwareProgrammerManager(private val context: Context) {
 
             // Ola's FFE0 Bluetooth path writes 128 bytes per block. Preserve the
             // adjacent 64-byte regions that the packed CHIRP image omits.
-            val blocks = buildList<Pair<Int, ByteArray>> {
+            val blocks = if (bluetooth) buildList<Pair<Int, ByteArray>> {
+                val bleExtras = checkNotNull(extras)
                 for (at in 0 until 0x7d00 step 128) add(at to desired.copyOfRange(at, at + 128))
-                add(0x8000 to (desired.copyOfRange(0x8000, 0x8040) + extras.copyOfRange(0, 64)))
-                add(0x9000 to (desired.copyOfRange(0x8040, 0x8080) + extras.copyOfRange(64, 128)))
-                val upper = desired.copyOfRange(0x8080, 0x8340) + extras.copyOfRange(128, 320)
+                add(0x8000 to (desired.copyOfRange(0x8000, 0x8040) + bleExtras.copyOfRange(0, 64)))
+                add(0x9000 to (desired.copyOfRange(0x8040, 0x8080) + bleExtras.copyOfRange(64, 128)))
+                val upper = desired.copyOfRange(0x8080, 0x8340) + bleExtras.copyOfRange(128, 320)
                 for (offset in upper.indices step 128) {
                     add(0xa000 + offset to upper.copyOfRange(offset, offset + 128))
                 }
             }
+            else buildList {
+                var offset = 0
+                for ((start, size) in uv32WiredRanges) {
+                    for (address in start until start + size step 64) {
+                        add(address to desired.copyOfRange(offset, offset + 64))
+                        offset += 64
+                    }
+                }
+                check(offset == desired.size)
+            }
             // A backup is a complete download session. Start a fresh clone session for writing.
             MiniSessionExit.finish(transport)
-            transport = reconnectUv32(address) { progress(0.33f, it) }
+            transport = reconnect(0.33f)
             initializeColorClone(transport, true) { pct, message -> progress(0.33f + pct * 0.02f, message) }
             uv32Baseline = null
             val key = intArrayOf(0x43, 0x4f, 0x20, 0x37)
@@ -1204,7 +1232,7 @@ class HardwareProgrammerManager(private val context: Context) {
                         payload[i] = (value xor k).toByte()
                     }
                 }
-                android.util.Log.i("ChirpBluetooth", "UV-32 write %04X TX 132 bytes".format(at))
+                android.util.Log.i("ChirpBluetooth", "UV-32 write %04X TX %d bytes".format(at, payload.size + 4))
                 transport.writeBytes(byteArrayOf(0x57, (at shr 8).toByte(), at.toByte(), payload.size.toByte()) + payload)
                 val ack = transport.readBytes(1, 4000L)
                 if (!ack.contentEquals(byteArrayOf(6))) {
@@ -1215,11 +1243,11 @@ class HardwareProgrammerManager(private val context: Context) {
                 progress(0.33f + 0.33f * (index + 1) / blocks.size, "Writing UV-32 block %04X".format(at))
             }
             MiniSessionExit.finish(transport)
-            val verify = reconnectUv32(address) { progress(0.66f, it) }
+            val verify = reconnect(0.66f)
             try {
-                readColorClone(verify, { pct, msg -> progress(0.66f + pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = true)
+                readColorClone(verify, { pct, msg -> progress(0.66f + pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = bluetooth)
                 val matches = desired.contentEquals(checkNotNull(lastUv32Image)) &&
-                    extras.contentEquals(checkNotNull(lastUv32Extras))
+                    (!bluetooth || checkNotNull(extras).contentEquals(checkNotNull(lastUv32Extras)))
                 MiniSessionExit.finish(verify, reconnectWaitMs = 0)
                 if (!matches) throw IOException("UV-32 read-back differs from the upload. Backups retained.")
                 progress(1f, "UV-32 upload verified after reconnecting.")
@@ -1269,7 +1297,7 @@ class HardwareProgrammerManager(private val context: Context) {
         if (initialize) initializeColorClone(transport, uv32, onProgress)
         val image = ByteArrayOutputStream()
         val key = byteArrayOf(0x43,0x4f,0x20,0x37)
-        val ranges = if (uv32) listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x02c0, 0xd000 to 0x0040)
+        val ranges = if (uv32) uv32WiredRanges
             else listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x01c0)
         val readRanges = if (includeUv32Extras) ranges + listOf(0x8040 to 64, 0x9040 to 64, 0xa2c0 to 192) else ranges
         val total = readRanges.sumOf { it.second }
