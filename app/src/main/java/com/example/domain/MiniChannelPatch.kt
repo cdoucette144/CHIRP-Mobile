@@ -33,16 +33,7 @@ object MiniChannelPatch {
                 }
             }
             fun tone(offset: Int, text: String) {
-                val value = when {
-                    text == "None" || text.isBlank() -> 0
-                    text.startsWith("DCS(raw:") && text.endsWith(")") ->
-                        text.removePrefix("DCS(raw:").removeSuffix(")").toInt().also { require(it in 1..599) }
-                    else -> {
-                        val hz = text.toDoubleOrNull() ?: error("Unsupported tone: $text")
-                        require(hz.isFinite() && hz in 60.0..300.0) { "Invalid CTCSS tone" }
-                        (hz * 10).toInt()
-                    }
-                }
+                val value = MiniToneCodec.encode(text)
                 // Preserve the radio's original representation for disabled tones.
                 val old = (original[offset].toInt() and 255) or ((original[offset+1].toInt() and 255) shl 8)
                 if (value == 0 && old == 65535 && original[at] != 0xff.toByte()) return
@@ -54,7 +45,7 @@ object MiniChannelPatch {
             if (ch.duplex == DuplexMode.OFF) result.fill(0xff.toByte(), at+4, at+8)
             else {
                 require(ch.mode != "AM" && ch.txFreqHz in 136000000L..174000000L ||
-                    ch.mode != "AM" && ch.txFreqHz in 400000000L..480000000L) { "Mini transmit frequency unsupported" }
+                    ch.mode != "AM" && ch.txFreqHz in 400000000L..480000000L) { "Channel ${ch.number} (${ch.name}): Mini TX ${ch.txFreqHz / 1000000.0} MHz / ${ch.mode} unsupported; RX ${ch.rxFreqHz / 1000000.0} MHz" }
                 frequency(at+4, ch.txFreqHz)
             }
             tone(at+8, ch.rxTone)

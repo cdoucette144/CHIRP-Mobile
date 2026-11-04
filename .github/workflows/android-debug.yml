@@ -21,7 +21,7 @@ jobs:
         with:
           gradle-version: '9.3.1'
       - name: Test analog compatibility and assemble APK
-        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.example.domain.compat.AnalogCompatibilityTest' --tests 'com.example.domain.MiniChannelPatchTest' --tests 'com.example.domain.MiniWritePlanTest' --tests 'com.example.domain.MiniNameEditGateTest' :app:assembleDebug
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.example.domain.compat.AnalogCompatibilityTest' --tests 'com.example.domain.MiniChannelPatchTest' --tests 'com.example.domain.MiniWritePlanTest' --tests 'com.example.domain.MiniNameEditGateTest' --tests 'com.example.domain.MiniToneCodecTest' :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: ChirpField-debug-apk

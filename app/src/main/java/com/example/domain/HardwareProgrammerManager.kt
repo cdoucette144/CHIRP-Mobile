@@ -1044,11 +1044,7 @@ class HardwareProgrammerManager(private val context: Context) {
             }
             fun tone(at: Int): String {
                 val value = (bytes[at].toInt() and 255) or ((bytes[at+1].toInt() and 255) shl 8)
-                return when {
-                    value == 0 || value == 65535 -> "None"
-                    value >= 600 -> String.format(Locale.US,"%.1f",value/10.0)
-                    else -> "DCS(raw:$value)"
-                }
+                return MiniToneCodec.decode(value)
             }
             val rx = frequency(offset)
             val off = (4..7).all { bytes[offset+it] == 0xff.toByte() }
