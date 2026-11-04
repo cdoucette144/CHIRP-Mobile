@@ -261,6 +261,9 @@ class HardwareProgrammerManager(private val context: Context) {
      * Discovers all GATT services/characteristics, logs their exact UUIDs for transparency,
      * subscribes to CCCD 0x2902 notifications, and returns a live [RadioSerialTransport].
      */
+    private class GattSetupDisconnected(val status: Int, radio: String) :
+        IOException("$radio disconnected during Bluetooth setup (status=$status). Ensure the radio is awake and in Bluetooth mode.")
+
     @SuppressLint("MissingPermission")
     private suspend fun openBleOrSppTransport(
         bleAddress: String,
@@ -309,7 +312,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     if (!servicesReady.isCompleted) {
                         servicesReady.completeExceptionally(
-                            IOException("Radio disconnected during GATT setup (status=$status). Ensure the UV-5R Mini is awake and in Bluetooth mode.")
+                            GattSetupDisconnected(status, if (configureUv32Baud) "UV-32" else "Radio")
                         )
                     }
                 }
@@ -370,8 +373,11 @@ class HardwareProgrammerManager(private val context: Context) {
             device.connectGatt(context, false, gattCallback)
         } ?: throw IOException("Failed to initialize BluetoothGatt connection.")
 
-        val connectedGatt = withTimeoutOrNull(8000L) {
-            servicesReady.await()
+        val connectedGatt = try {
+            withTimeoutOrNull(8000L) { servicesReady.await() }
+        } catch (e: GattSetupDisconnected) {
+            gatt.close()
+            throw e
         }
         if (connectedGatt == null) {
             try {
@@ -1077,6 +1083,19 @@ class HardwareProgrammerManager(private val context: Context) {
     /** Mini protocol reference: CHIRP baofeng_uv17Pro.py, UV5RMini.
      * Read-only: preserve the complete decrypted image before decoding channels.
      */
+    private suspend fun reconnectUv32(address: String, onLog: (String) -> Unit): RadioSerialTransport {
+        repeat(2) {
+            try {
+                return openBleOrSppTransport(address, configureUv32Baud = true, onLog = onLog)
+            } catch (e: GattSetupDisconnected) {
+                if (e.status != 133) throw e
+                onLog("[UV-32] Bluetooth reconnect failed (133). Waiting for the radio and retrying...")
+                delay(3000)
+            }
+        }
+        return openBleOrSppTransport(address, configureUv32Baud = true, onLog = onLog)
+    }
+
     private suspend fun uploadUv32(
         address: String,
         channels: List<RadioChannel>,
@@ -1119,7 +1138,7 @@ class HardwareProgrammerManager(private val context: Context) {
             }
             // A backup is a complete download session. Start a fresh clone session for writing.
             MiniSessionExit.finish(transport)
-            transport = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.33f, it) }
+            transport = reconnectUv32(address) { progress(0.33f, it) }
             initializeColorClone(transport, true) { pct, message -> progress(0.33f + pct * 0.02f, message) }
             uv32Baseline = null
             val key = intArrayOf(0x43, 0x4f, 0x20, 0x37)
@@ -1143,7 +1162,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 progress(0.33f + 0.33f * (index + 1) / blocks.size, "Writing UV-32 block %04X".format(at))
             }
             MiniSessionExit.finish(transport)
-            val verify = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.66f, it) }
+            val verify = reconnectUv32(address) { progress(0.66f, it) }
             try {
                 readColorClone(verify, { pct, msg -> progress(0.66f + pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = true)
                 val matches = desired.contentEquals(checkNotNull(lastUv32Image)) &&
