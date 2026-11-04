@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -29,10 +30,12 @@ class RadioTransferService : Service() {
             return START_NOT_STICKY
         }
         try {
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL, "Radio transfers", NotificationManager.IMPORTANCE_LOW)
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val manager = getSystemService(NotificationManager::class.java)
+                manager.createNotificationChannel(
+                    NotificationChannel(CHANNEL, "Radio transfers", NotificationManager.IMPORTANCE_LOW)
+                )
+            }
             val openApp = PendingIntent.getActivity(
                 this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_IMMUTABLE
