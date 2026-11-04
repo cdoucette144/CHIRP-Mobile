@@ -113,6 +113,9 @@ interface RadioSerialTransport {
 }
 
 class HardwareProgrammerManager(private val context: Context) {
+    internal suspend fun <T> withBackgroundTransfer(title: String, operation: suspend () -> T): T =
+        RadioTransferService.run(context.applicationContext, title, operation)
+
     private var lastMiniImage: ByteArray? = null
     private var lastUv32Image: ByteArray? = null
     private var lastUv32Extras: ByteArray? = null
@@ -1255,7 +1258,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 var multiplier = 1L
                 for (i in 0..3) {
                     val b = bytes[at+i].toInt() and 255
-                    if ((b and 15) > 9 || (b shr 4) > 9) throw IOException("Invalid Mini frequency encoding in channel ${slot+1}")
+                    if ((b and 15) > 9 || (b shr 4) > 9) throw IOException("Invalid $model frequency encoding in channel ${slot+1}")
                     result += ((b and 15) + (b shr 4)*10) * multiplier
                     multiplier *= 100
                 }

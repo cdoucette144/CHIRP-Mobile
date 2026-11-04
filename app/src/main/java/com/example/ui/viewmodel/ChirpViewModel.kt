@@ -557,16 +557,18 @@ class ChirpViewModel(
                 lastFailedAction = "DOWNLOAD"
             )
             try {
-                val downloadedChannels = programmerManager.readCodeplugFromRadio(
-                    radio = radio,
-                    transportMode = transportMode,
-                    bleAddress = bleAddress,
-                    usbDeviceName = usbDeviceName,
-                    onProgress = { pct, line ->
-                        _flashProgress.value = pct
-                        _flashLogs.value = _flashLogs.value + line
-                    }
-                )
+                val downloadedChannels = programmerManager.withBackgroundTransfer("Downloading ${radio.model}") {
+                    programmerManager.readCodeplugFromRadio(
+                        radio = radio,
+                        transportMode = transportMode,
+                        bleAddress = bleAddress,
+                        usbDeviceName = usbDeviceName,
+                        onProgress = { pct, line ->
+                            _flashProgress.value = pct
+                            _flashLogs.value = _flashLogs.value + line
+                        }
+                    )
+                }
                 _codeplugChannels.value = downloadedChannels.mapIndexed { idx, ch ->
                     if (radio.id == "baofeng_uv32" || radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
@@ -616,6 +618,7 @@ class ChirpViewModel(
         if (_isFlashing.value) return
         val radio = _selectedRadio.value
         val channels = _codeplugChannels.value
+        val settings = _radioSettings.value
         if (channels.isEmpty()) {
             _statusBanner.value = "Codeplug has no channels to upload. Add a bank or channel first."
             return
@@ -657,18 +660,20 @@ class ChirpViewModel(
                 lastFailedAction = "UPLOAD"
             )
             try {
-                programmerManager.executeProgrammingSequence(
-                    radio = radio,
-                    transportMode = transportMode,
-                    bleAddress = bleAddress,
-                    usbDeviceName = usbDeviceName,
-                    channels = channels,
-                    settings = _radioSettings.value,
-                    onProgress = { pct, line ->
-                        _flashProgress.value = pct
-                        _flashLogs.value = _flashLogs.value + line
-                    }
-                )
+                programmerManager.withBackgroundTransfer("Uploading ${radio.model}") {
+                    programmerManager.executeProgrammingSequence(
+                        radio = radio,
+                        transportMode = transportMode,
+                        bleAddress = bleAddress,
+                        usbDeviceName = usbDeviceName,
+                        channels = channels,
+                        settings = settings,
+                        onProgress = { pct, line ->
+                            _flashProgress.value = pct
+                            _flashLogs.value = _flashLogs.value + line
+                        }
+                    )
+                }
                 _hardwareConnectivity.value = HardwareConnectivityState(
                     status = HardwareConnectionStatus.DISCONNECTED,
                     transport = transportMode,

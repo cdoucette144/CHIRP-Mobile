@@ -13,9 +13,10 @@ object MiniChannelPatch {
 
     private fun patch(original: ByteArray, channels: List<RadioChannel>, slotCount: Int, changedSlots: Set<Int>?, baseline: Map<Int, RadioChannel>): ByteArray {
         val uv32 = slotCount == 1000
-        require(original.size == (if (uv32) 0x8380 else 0x8240)) { "Full Mini image required" }
+        val model = if (uv32) "UV-32" else "UV-5R Mini"
+        require(original.size == (if (uv32) 0x8380 else 0x8240)) { "Full $model image required" }
         require(channels.map { it.number }.distinct().size == channels.size) { "Duplicate channel slots" }
-        require(channels.all { it.number in 1..slotCount }) { "Mini slots must be 1–999" }
+        require(channels.all { it.number in 1..slotCount }) { "$model slots must be 1–$slotCount" }
         val result = original.copyOf()
         val bySlot = channels.associateBy { it.number }
         for (slot in 1..slotCount) {
@@ -27,13 +28,15 @@ object MiniChannelPatch {
                 continue
             }
             require(ch.mode in listOf("FM", "NFM", "AM")) { "Analog modes only" }
-            require(ch.name.length <= 12 && ch.name.all { it.code in 32..126 }) { "Mini names require at most 12 ASCII characters" }
+            require(uv32 || (ch.name.length <= 12 && ch.name.all { it.code in 32..126 })) {
+                "Mini names require at most 12 ASCII characters"
+            }
             if (original[at] == 0xff.toByte()) {
                 result.fill(0, at, at + 20)
                 result[at+15] = 4 // include new channel in scanning
             }
             fun frequency(offset: Int, hz: Long) {
-                require(hz in 108000000L..520000000L && hz % 10 == 0L) { "Invalid Mini frequency" }
+                require(hz in 108000000L..520000000L && hz % 10 == 0L) { "Invalid $model frequency in channel $slot" }
                 var value = hz / 10
                 for (i in 0..3) {
                     result[offset+i] = ((value % 10) + ((value / 10) % 10) * 16).toByte()
@@ -57,7 +60,7 @@ object MiniChannelPatch {
             else {
                 require((uv32 && ch.mode != "AM" && (ch.txFreqHz in 220000000L..260000000L || ch.txFreqHz in 350000000L..390000000L || ch.txFreqHz in 400000000L..520000000L)) ||
                     ch.mode != "AM" && ch.txFreqHz in 136000000L..174000000L ||
-                    ch.mode != "AM" && ch.txFreqHz in 400000000L..480000000L) { "Channel ${ch.number} (${ch.name}): Mini TX ${ch.txFreqHz / 1000000.0} MHz / ${ch.mode} unsupported; RX ${ch.rxFreqHz / 1000000.0} MHz" }
+                    ch.mode != "AM" && ch.txFreqHz in 400000000L..480000000L) { "Channel ${ch.number} (${ch.name}): $model TX ${ch.txFreqHz / 1000000.0} MHz / ${ch.mode} unsupported; RX ${ch.rxFreqHz / 1000000.0} MHz" }
                 frequency(at+4, ch.txFreqHz)
             }
             if (previous?.rxTone != ch.rxTone) tone(at+8, ch.rxTone)
@@ -73,9 +76,14 @@ object MiniChannelPatch {
             flag(1,ch.fhssPrivacy)
             ch.pttId?.let { require(it in 0..3) { "Invalid PTT ID mode" };result[at+13]=it.toByte() }
             val oldName = original.copyOfRange(at+20,at+32).takeWhile { it != 0.toByte() && it != 0xff.toByte() }.map { (it.toInt() and 255).toChar() }.joinToString("").trim().ifBlank { "CH $slot" }
-            if (ch.name != oldName || original[at] == 0xff.toByte()) {
+            val unchangedName = ch.name == (previous?.name ?: oldName)
+            if (!unchangedName || original[at] == 0xff.toByte()) {
                 result.fill(0xff.toByte(),at+20,at+32)
-                ch.name.toByteArray(Charsets.US_ASCII).copyInto(result,at+20)
+                val radioName = if (uv32) {
+                    ch.name.map { if (it in ' '..'~') it else ' ' }.joinToString("").trim()
+                        .take(12).trimEnd().ifBlank { "CH $slot" }
+                } else ch.name
+                radioName.toByteArray(Charsets.US_ASCII).copyInto(result, at + 20)
             }
         }
         return result
