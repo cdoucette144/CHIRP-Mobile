@@ -117,6 +117,7 @@ class HardwareProgrammerManager(private val context: Context) {
         RadioTransferService.run(context.applicationContext, title, operation)
 
     private var lastMiniImage: ByteArray? = null
+    fun miniSettings() = lastMiniImage?.let { com.example.data.model.MiniMenuSetting.read(it) }.orEmpty()
     private var lastUv32Image: ByteArray? = null
     private var lastUv32Extras: ByteArray? = null
     private var rt950Baseline: Triple<String, ByteArray, List<RadioChannel>>? = null
@@ -1054,6 +1055,15 @@ class HardwareProgrammerManager(private val context: Context) {
                 readColorClone(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
                 val original = checkNotNull(lastMiniImage).copyOf()
                 val desired = MiniChannelPatch.apply(original, channels)
+                for ((setting, value) in settings.miniEdits) {
+                    val baseline = settings.miniDownloaded[setting]
+                    if (value == baseline) continue
+                    require(baseline != null && (original[setting.offset].toInt() and 255) == baseline) {
+                        "Mini ${setting.label} changed since download. Download again before uploading."
+                    }
+                    require(value in setting.options.indices)
+                    desired[setting.offset] = value.toByte()
+                }
                 if (original.contentEquals(desired)) {
                     android.util.Log.i("ChirpBluetooth","[VERIFIED] No channel changes; no write commands sent.")
                     onProgress(1f,"[VERIFIED] No channel changes; no write commands sent.")

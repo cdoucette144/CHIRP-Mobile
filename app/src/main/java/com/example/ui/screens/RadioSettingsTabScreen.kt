@@ -95,6 +95,23 @@ fun RadioSettingsTabScreen(
             }
         }
 
+        if (selectedRadio.id == "baofeng_uv5_mini") {
+            item {
+                Text("UV-5R Mini settings", style = MaterialTheme.typography.titleMedium)
+                Text(if (settings.miniDownloaded.isEmpty()) "Download from the Mini to load its settings." else "Settings are sent with channels from the Codeplug upload.")
+            }
+            items(settings.miniDownloaded.entries.toList()) { (setting, downloaded) ->
+                SettingChipSelectorRow(
+                    label = setting.label,
+                    options = setting.options,
+                    selected = setting.options[settings.miniEdits[setting] ?: downloaded],
+                    onSelect = { choice ->
+                        onUpdateSettings(settings.copy(miniEdits = settings.miniEdits + (setting to setting.options.indexOf(choice))))
+                    }
+                )
+            }
+            return@LazyColumn
+        }
         if (selectedRadio.id == "radtel_rt950_pro") {
             item {
                 Text("RT-950 Pro settings", style = MaterialTheme.typography.titleMedium)

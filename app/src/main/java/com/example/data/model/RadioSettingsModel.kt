@@ -78,6 +78,8 @@ data class RadioSettingsState(
     val displayFormatB: String = "Frequency",
     val pttIdMode: String = "Off",
     val aniCode: String = "101",
+    val miniDownloaded: Map<MiniMenuSetting, Int> = emptyMap(),
+    val miniEdits: Map<MiniMenuSetting, Int> = emptyMap(),
     val rt950ZoneNames: List<String> = emptyList(),
     val rt950Settings: Map<String, String> = emptyMap(),
     val uv32ZoneNames: List<String> = List(10) { "" },
@@ -112,5 +114,22 @@ data class RadioSettingsState(
         val workModes = listOf("Channel Mode", "Frequency (VFO) Mode")
         val displayFormats = listOf("Name", "Frequency", "Channel Number")
         val pttIdModes = listOf("Off", "BOT (Begin)", "EOT (End)", "Both")
+    }
+}
+
+enum class MiniMenuSetting(val offset: Int, val label: String, val options: List<String>) {
+    SQUELCH(0x8040, "Squelch", listOf("Off") + (1..5).map(Int::toString)),
+    BACKLIGHT(0x8043, "Backlight Timer", listOf("Always On") + (5..20 step 5).map { "$it seconds" }),
+    TIMEOUT(0x8045, "Transmit Timeout", listOf("Off") + (15..180 step 15).map { "$it seconds" }),
+    BEEP(0x8046, "Keypad Beep", listOf("Off", "On")),
+    SCAN(0x804a, "Scan Resume", listOf("Time", "Carrier", "Search"));
+
+    companion object {
+        fun read(image: ByteArray): Map<MiniMenuSetting, Int> = buildMap {
+            for (setting in entries) {
+                val value = image[setting.offset].toInt() and 255
+                if (value in setting.options.indices) put(setting, value)
+            }
+        }
     }
 }

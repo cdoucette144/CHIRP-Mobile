@@ -577,6 +577,12 @@ class ChirpViewModel(
                         rt950Settings = programmerManager.lastRt950Settings
                     )
                 }
+                if (radio.id == "baofeng_uv5_mini") {
+                    _radioSettings.value = _radioSettings.value.copy(
+                        miniDownloaded = programmerManager.miniSettings(),
+                        miniEdits = emptyMap()
+                    )
+                }
                 programmerManager.lastUv32Settings?.takeIf { radio.id == "baofeng_uv32" }?.let { snapshot ->
                     val current = _radioSettings.value
                     _radioSettings.value = current.copy(
