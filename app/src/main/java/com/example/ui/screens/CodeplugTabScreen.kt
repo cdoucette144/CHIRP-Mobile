@@ -1126,7 +1126,9 @@ private fun HardwareTransferModal(
                             Text("Find radios")
                         }
                     }
-                    bleDevices.forEach { d ->
+                    bleDevices.sortedBy { device ->
+                        !device.name.trim().equals("walkie-talkie", ignoreCase = true)
+                    }.forEach { d ->
                         val isSelected = selectedBleAddress == d.address
                         Surface(
                             color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
