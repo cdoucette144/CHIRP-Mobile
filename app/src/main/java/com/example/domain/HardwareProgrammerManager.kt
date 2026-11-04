@@ -481,7 +481,7 @@ class HardwareProgrammerManager(private val context: Context) {
             @SuppressLint("MissingPermission")
             override suspend fun writeBytes(data: ByteArray) {
                 // Ola fragments UV-32 writes at the negotiated MTU minus seven.
-                val uv32Block = configureUv32Baud && data.size == 68 && data[0] == 0x57.toByte()
+                val uv32Block = configureUv32Baud && data.size == 132 && data[0] == 0x57.toByte()
                 val chunkSize = if (uv32Block) (mtu - 7).coerceAtLeast(16) else 20
                 var offset = 0
                 while (offset < data.size) {
@@ -1106,17 +1106,16 @@ class HardwareProgrammerManager(private val context: Context) {
                 return
             }
 
-            // Ola's Bluetooth write ranges. Bytes outside the CHIRP image come from the fresh read.
+            // Ola's FFE0 Bluetooth path writes 128 bytes per block. Preserve the
+            // adjacent 64-byte regions that the packed CHIRP image omits.
             val blocks = buildList<Pair<Int, ByteArray>> {
-                for (at in 0 until 0x7d00 step 64) add(at to desired.copyOfRange(at, at + 64))
-                add(0x8000 to desired.copyOfRange(0x8000, 0x8040))
-                add(0x8040 to extras.copyOfRange(0, 64))
-                add(0x9000 to desired.copyOfRange(0x8040, 0x8080))
-                add(0x9040 to extras.copyOfRange(64, 128))
-                for (offset in 0 until 0x02c0 step 64)
-                    add(0xa000 + offset to desired.copyOfRange(0x8080 + offset, 0x8080 + offset + 64))
-                for (offset in 0 until 192 step 64)
-                    add(0xa2c0 + offset to extras.copyOfRange(128 + offset, 192 + offset))
+                for (at in 0 until 0x7d00 step 128) add(at to desired.copyOfRange(at, at + 128))
+                add(0x8000 to (desired.copyOfRange(0x8000, 0x8040) + extras.copyOfRange(0, 64)))
+                add(0x9000 to (desired.copyOfRange(0x8040, 0x8080) + extras.copyOfRange(64, 128)))
+                val upper = desired.copyOfRange(0x8080, 0x8340) + extras.copyOfRange(128, 320)
+                for (offset in upper.indices step 128) {
+                    add(0xa000 + offset to upper.copyOfRange(offset, offset + 128))
+                }
             }
             // A backup is a complete download session. Start a fresh clone session for writing.
             MiniSessionExit.finish(transport)
@@ -1133,8 +1132,8 @@ class HardwareProgrammerManager(private val context: Context) {
                         payload[i] = (value xor k).toByte()
                     }
                 }
-                android.util.Log.i("ChirpBluetooth", "UV-32 write %04X TX 68 bytes".format(at))
-                transport.writeBytes(byteArrayOf(0x57, (at shr 8).toByte(), at.toByte(), 0x40) + payload)
+                android.util.Log.i("ChirpBluetooth", "UV-32 write %04X TX 132 bytes".format(at))
+                transport.writeBytes(byteArrayOf(0x57, (at shr 8).toByte(), at.toByte(), payload.size.toByte()) + payload)
                 val ack = transport.readBytes(1, 4000L)
                 if (!ack.contentEquals(byteArrayOf(6))) {
                     val reply = ack.joinToString(" ") { "%02X".format(it) }.ifEmpty { "no reply" }
