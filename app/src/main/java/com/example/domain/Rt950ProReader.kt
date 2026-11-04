@@ -48,16 +48,22 @@ internal object Rt950ProReader {
             val detail = reply.firstOrNull()?.let { "reply %02X".format(it) } ?: "no ACK"
             throw IOException("RT-950 Pro handshake failed ($detail after $echoed echoed bytes).")
         }
+        suspend fun send(command: ByteArray) {
+            transport.writeBytes(command)
+            if (echoed == magic.size && !expect(command.size, "command echo").contentEquals(command)) {
+                throw IOException("RT-950 Pro serial echo did not match the command.")
+            }
+        }
         try {
             // The initial ACK is the entire reply. Discard any trailing startup bytes
             // before asking for the separately framed firmware identification.
             transport.clearRxBuffer()
-            transport.writeBytes(ascii("F"))
+            send(ascii("F"))
             var firmware = expect(16, "firmware identification")
             repeat(4) {
                 if (firmware.first() == 6.toByte()) firmware = firmware.copyOfRange(1, 16) + expect(1, "firmware tail")
             }
-            transport.writeBytes(ascii("M"))
+            send(ascii("M"))
             val model = expect(12, "model identification").toString(Charsets.US_ASCII).trim { it <= ' ' }
             val normalized = model.uppercase().filter { it.isLetterOrDigit() }
             if (normalized !in setOf("RT950", "RT950PRO", "RT950PROBLE")) throw IOException("Unexpected RT-950 Pro identifier: $model")
@@ -67,7 +73,7 @@ internal object Rt950ProReader {
             ascii("SEND").copyInto(init)
             init[4] = 0x10
             init[5] = 1
-            transport.writeBytes(init)
+            send(init)
             ack("session initialization")
             val key = ascii("CO 7")
             val image = ByteArrayOutputStream()
@@ -75,7 +81,7 @@ internal object Rt950ProReader {
             for ((command, start, length) in regions) {
                 for (address in start until start + length step 128) {
                     val request = byteArrayOf(command.toByte(), (address shr 8).toByte(), address.toByte(), 0x80.toByte())
-                    transport.writeBytes(request)
+                    send(request)
                     val reply = expect(132, "read %02X:%04X".format(command, address))
                     if (!reply.copyOfRange(0, 4).contentEquals(request)) {
                         throw IOException("Unexpected RT-950 Pro response header at %02X:%04X.".format(command, address))
