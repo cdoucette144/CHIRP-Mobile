@@ -255,6 +255,8 @@ class HardwareProgrammerManager(private val context: Context) {
             upper.contains("TID") ||
             upper.contains("ODMASTER") ||
             upper.contains("BTECH") ||
+            upper.contains("950") ||
+            upper.contains("RADTEL") ||
             upper.contains("QUANSHENG") ||
             upper.contains("BLE")
     }
@@ -271,6 +273,7 @@ class HardwareProgrammerManager(private val context: Context) {
     private suspend fun openBleOrSppTransport(
         bleAddress: String,
         configureUv32Baud: Boolean = false,
+        unlockRt950Pro: Boolean = false,
         onLog: (String) -> Unit
     ): RadioSerialTransport = withContext(Dispatchers.IO) {
         if (bleAddress.isBlank()) {
@@ -388,6 +391,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 gatt.close()
             } catch (_: Exception) {
             }
+            if (unlockRt950Pro) throw IOException("RT-950 Pro Bluetooth setup timed out.")
             // Attempt Classic RFCOMM SPP fallback in case the adapter uses SPP
             return@withContext openClassicSppFallback(device, onLog)
         }
@@ -447,17 +451,18 @@ class HardwareProgrammerManager(private val context: Context) {
             onLog("[GATT CCCD] Subscribed to UART RX notifications (0x2902).")
         }
 
-        if (configureUv32Baud) {
+        if (configureUv32Baud || unlockRt950Pro) {
+            val controlLabel = if (unlockRt950Pro) "RT-950 Pro Bluetooth unlock" else "UV-32 Bluetooth baud setup"
             try {
                 val baudControl = connectedGatt.getService(finalWriteChar.service.uuid)
                     ?.getCharacteristic(UUID.fromString("0000ff31-0000-1000-8000-00805f9b34fb"))
-                    ?: throw IOException("UV-32 Bluetooth baud control (FF31) is missing.")
+                    ?: throw IOException("$controlLabel characteristic (FF31) is missing.")
                 if (baudControl.properties and BluetoothGattCharacteristic.PROPERTY_WRITE == 0) {
-                    throw IOException("UV-32 Bluetooth baud control does not support acknowledged writes.")
+                    throw IOException("$controlLabel does not support acknowledged writes.")
                 }
                 // The FFE0 bridge uses a 20-byte configuration frame.
                 // Byte 4 (zero-based) selects the baud rate: 2 means 115200.
-                val baudBytes = ByteArray(20).apply { this[4] = 0x02 }
+                val baudBytes = if (unlockRt950Pro) Rt950ProReader.unlockFrame else ByteArray(20).apply { this[4] = 0x02 }
                 writeAckSignal.clear()
                 @Suppress("DEPRECATION")
                 baudControl.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
@@ -465,13 +470,12 @@ class HardwareProgrammerManager(private val context: Context) {
                 baudControl.value = baudBytes
                 @Suppress("DEPRECATION")
                 val started = connectedGatt.writeCharacteristic(baudControl)
-                if (!started) throw IOException("Could not start the UV-32 Bluetooth baud setup.")
+                if (!started) throw IOException("Could not start $controlLabel.")
                 val status = writeAckSignal.poll(2500, TimeUnit.MILLISECONDS)
                 if (status != BluetoothGatt.GATT_SUCCESS) {
-                    throw IOException("UV-32 Bluetooth baud setup failed (status=$status).")
+                    throw IOException("$controlLabel failed (status=$status).")
                 }
-                android.util.Log.i("ChirpBluetooth", "UV-32 FF31 GATT write accepted (20-byte frame, baud selector 02)")
-                onLog("[UV-32] Bluetooth bridge configured for 115200 baud.")
+                onLog("[$controlLabel] FF31 write accepted.")
             } catch (error: Exception) {
                 connectedGatt.disconnect()
                 connectedGatt.close()
@@ -837,16 +841,28 @@ class HardwareProgrammerManager(private val context: Context) {
         onProgress: (Float, String) -> Unit
     ): List<RadioChannel> = withContext(Dispatchers.IO) {
         val uv32 = radio.id == "baofeng_uv32"
+        val rt950Pro = radio.id == "radtel_rt950_pro"
         lastPersistenceMessage = null
+        if (rt950Pro && transportMode != "Bluetooth LE") throw IOException("Select Bluetooth for the RT-950 Pro download.")
         if (uv32 && transportMode != "Bluetooth LE") throw IOException("Use Bluetooth for the UV-32 test download.")
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
-            openBleOrSppTransport(bleAddress, configureUv32Baud = uv32) { line -> onProgress(0.08f, line) }
+            openBleOrSppTransport(bleAddress, configureUv32Baud = uv32, unlockRt950Pro = rt950Pro) { line -> onProgress(0.08f, line) }
         } else {
             openUsbOtgTransport(usbDeviceName) { line -> onProgress(0.08f, line) }
         }
 
         try {
+            if (rt950Pro) {
+                val image = Rt950ProReader.download(transport, onProgress)
+                val backups = java.io.File(context.filesDir, "rt950pro-backups").apply { mkdirs() }
+                val file = java.io.File(backups, "rt950pro-${System.currentTimeMillis()}.bin")
+                file.writeBytes(image)
+                val channels = Rt950ProReader.decodeChannels(image)
+                lastPersistenceMessage = "RT-950 Pro: downloaded ${channels.size} channels and saved ${file.name}."
+                onProgress(1f, checkNotNull(lastPersistenceMessage))
+                return@withContext channels
+            }
             if (uv32) {
                 val channels = readColorClone(transport, onProgress, uv32 = true)
                 MiniSessionExit.finish(transport, reconnectWaitMs = 0)
@@ -958,6 +974,7 @@ class HardwareProgrammerManager(private val context: Context) {
         settings: com.example.data.model.RadioSettingsState,
         onProgress: (Float, String) -> Unit
     ) = withContext(Dispatchers.IO) {
+        require(radio.id != "radtel_rt950_pro") { "RT-950 Pro currently supports download only." }
         if (radio.id == "baofeng_uv32") {
             require(transportMode == "Bluetooth LE") { "Use Bluetooth to upload to the UV-32." }
             uploadUv32(bleAddress, channels, settings, onProgress)

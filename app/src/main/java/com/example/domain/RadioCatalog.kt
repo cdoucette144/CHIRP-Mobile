@@ -41,6 +41,18 @@ object RadioCatalog {
             protocolNotes = "1000 channel slots across 10 zones. Enable Wireless CPS on the radio for the Bluetooth test download."
         ),
         classSupportedRadioModel(
+            id = "radtel_rt950_pro",
+            vendor = "Radtel",
+            model = "RT-950 Pro",
+            maxChannels = 960,
+            bandsSummary = "Multiband analog · Bluetooth download",
+            supportedBandsMhz = listOf(18.0..64.0, 70.0..580.0),
+            transport = TransportInterface.BLUETOOTH_LE,
+            supportsNativeRxOnly = true,
+            eepromIdent = "RT-950PRO",
+            protocolNotes = "Read-only Bluetooth support. Enable Bluetooth on the radio before downloading."
+        ),
+        classSupportedRadioModel(
             id = "baofeng_uv5_mini",
             vendor = "Baofeng",
             model = "Baofeng UV-5R Mini",
