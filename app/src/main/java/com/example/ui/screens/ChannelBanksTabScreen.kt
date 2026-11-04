@@ -907,17 +907,17 @@ private fun CategoryChannelPickerView(
             f in 136000000L..174000000L || f in 350000000L..390000000L || f in 400000000L..520000000L
         return supported && ch.name.length<=12 && (ch.mode!="AM" || selectedRadio.supportsNativeRxOnly)
     }
-    val eligibleAvailable = allAvailable.filter { eligible(it.second) }
-    val selectedKeys = remember(groups,selectedRadio.id) {
-        mutableStateListOf<String>().apply {
-            addAll(eligibleAvailable.take(selectedRadio.maxChannels).map { it.first })
-        }
+    val compatibleCount = allAvailable.count { eligible(it.second) }
+    val eligibleAvailable = allAvailable.filter { (_,ch) ->
+        eligible(ch) && (channelSearch.isBlank() || ch.name.contains(channelSearch,true) ||
+            ch.notes.contains(channelSearch,true) || ch.rxFreqMhzString.contains(channelSearch))
     }
+    val selectedKeys = remember(groups,selectedRadio.id) { mutableStateListOf<String>() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OutlinedTextField(value=channelSearch,onValueChange={channelSearch=it},label={Text("Search alpha tag, agency or frequency")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-        if(eligibleAvailable.size!=allAvailable.size) Text(
-            "${allAvailable.size} source entries. ${allAvailable.size-eligibleAvailable.size} need a shorter radio alias or a different receive band; they are not selected by default.",
+        if(compatibleCount!=allAvailable.size) Text(
+            "${allAvailable.size} source entries. ${allAvailable.size-compatibleCount} need a shorter radio alias or a different receive band; they are not selected by default.",
             color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(8.dp))
 
         Row(
