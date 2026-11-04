@@ -732,6 +732,7 @@ class HardwareProgrammerManager(private val context: Context) {
         onLog("[USB OTG] Opened ${identifySerialChipset(device.vendorId, device.productId)} @ $baud 8N1.")
 
         return object : RadioSerialTransport {
+            private val pending = ArrayDeque<Byte>()
             override suspend fun writeBytes(data: ByteArray) = withContext(Dispatchers.IO) {
                 val written = connection.bulkTransfer(bulkOut, data, data.size, 1500)
                 if (written != data.size) {
@@ -742,6 +743,9 @@ class HardwareProgrammerManager(private val context: Context) {
             override suspend fun readBytes(expectedCount: Int, timeoutMs: Long): ByteArray =
                 withContext(Dispatchers.IO) {
                     val out = ByteArrayOutputStream(expectedCount)
+                    while (pending.isNotEmpty() && out.size() < expectedCount) {
+                        out.write(pending.removeFirst().toInt())
+                    }
                     val deadline = System.currentTimeMillis() + timeoutMs
                     val buf = ByteArray(64)
                     while (out.size() < expectedCount && System.currentTimeMillis() < deadline) {
@@ -749,15 +753,16 @@ class HardwareProgrammerManager(private val context: Context) {
                         if (n > 0) {
                             // FTDI prepends 2 modem status bytes to each bulk IN packet
                             val startIdx = if (device.vendorId == 0x0403 && n >= 2) 2 else 0
-                            if (n > startIdx) {
-                                out.write(buf, startIdx, n - startIdx)
-                            }
+                            val take = minOf(n - startIdx, expectedCount - out.size())
+                            out.write(buf, startIdx, take)
+                            for (index in startIdx + take until n) pending.addLast(buf[index])
                         }
                     }
                     out.toByteArray()
                 }
 
             override fun clearRxBuffer() {
+                pending.clear()
                 val buf = ByteArray(64)
                 while (connection.bulkTransfer(bulkIn, buf, buf.size, 30) > 0) {
                     // Drain stale bytes

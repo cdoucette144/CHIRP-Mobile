@@ -29,12 +29,16 @@ internal object Rt950ProReader {
             return reply
         }
         suspend fun ack(label: String) {
-            if (expect(1, label)[0] != 6.toByte()) throw IOException("RT-950 Pro $label rejected.")
+            val reply = expect(1, label)[0]
+            if (reply != 6.toByte()) throw IOException("RT-950 Pro $label rejected (reply %02X).".format(reply))
         }
         transport.clearRxBuffer()
         transport.writeBytes(ascii("PROGRAMBT9000U"))
         ack("handshake")
         try {
+            // The initial ACK is the entire reply. Discard any trailing startup bytes
+            // before asking for the separately framed firmware identification.
+            transport.clearRxBuffer()
             transport.writeBytes(ascii("F"))
             var firmware = expect(16, "firmware identification")
             repeat(4) {
