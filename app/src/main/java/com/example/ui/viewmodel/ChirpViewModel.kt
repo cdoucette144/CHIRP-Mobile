@@ -598,6 +598,7 @@ class ChirpViewModel(
                 )
                 _statusBanner.value = programmerManager.lastPersistenceMessage ?: "Downloaded ${downloadedChannels.size} channels from ${radio.model} via $transportMode."
             } catch (e: Exception) {
+                Log.e("ChirpBluetooth", "Download failed for ${radio.model} via $transportMode", e)
                 val msg = e.localizedMessage ?: "Hardware clone read failed."
                 _flashLogs.value = _flashLogs.value + "[ERROR] $msg"
                 _hardwareConnectivity.value = HardwareConnectivityState(
