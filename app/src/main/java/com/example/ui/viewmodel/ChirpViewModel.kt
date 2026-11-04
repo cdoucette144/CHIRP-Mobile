@@ -574,7 +574,6 @@ class ChirpViewModel(
             errorReason = "",
             lastFailedAction = ""
         )
-        _statusBanner.value = "Hardware disconnected."
     }
 
     // --- LOCAL & CLOUD CODEPLUG SAVE / OPEN ---

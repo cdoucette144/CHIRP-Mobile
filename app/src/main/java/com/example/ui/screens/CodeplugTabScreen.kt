@@ -171,6 +171,9 @@ fun CodeplugTabScreen(
             dismissButton={TextButton(onClick={showEditSelection=false}){Text("Cancel")}})
     }
 
+    val hasCodeplug = isCodeplugLoaded || channels.isNotEmpty()
+    var showRadioControls by remember(hasCodeplug) { mutableStateOf(!hasCodeplug) }
+
     // Drag-and-drop state
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
@@ -180,104 +183,114 @@ fun CodeplugTabScreen(
             .fillMaxSize()
             .testTag("codeplug_tab_screen")
     ) {
-        // 1. DASHBOARD BAR DIRECTLY UNDERNEATH THE TABS
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+        // Leave the channel list room once a codeplug is open.
+        if (hasCodeplug) {
+            TextButton(
+                onClick = { showRadioControls = !showRadioControls },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                // Live Hardware Connectivity Indicator Badge + Retry
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Text(if (showRadioControls) "Hide radio controls" else "Radio controls")
+            }
+        }
+        if (showRadioControls) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    ConnectivityStatusBadge(
-                        state = connectivityState,
-                        onRetry = onRetryConnection,
-                        onDisconnect = onDisconnectHardware,
-                        onTapBadge = { showDownloadRadioDialog = true },
-                        modifier = Modifier.weight(1f, fill = false)
+                    // Live Hardware Connectivity Indicator Badge + Retry
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ConnectivityStatusBadge(
+                            state = connectivityState,
+                            onRetry = onRetryConnection,
+                            onDisconnect = onDisconnectHardware,
+                            onTapBadge = { showDownloadRadioDialog = true },
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+
+                    // Brand ➔ Model Dropdown Hierarchy Selector
+                    RadioBrandModelDropdowns(
+                        selectedRadio = selectedRadio,
+                        onSelectRadio = onSelectRadio
                     )
-                }
 
-                // Brand ➔ Model Dropdown Hierarchy Selector
-                RadioBrandModelDropdowns(
-                    selectedRadio = selectedRadio,
-                    onSelectRadio = onSelectRadio
-                )
-
-                // Quick Action Buttons (Download, Upload, Save Codeplug)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(
-                        onClick = { showDownloadRadioDialog = true },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp)
-                            .testTag("dashboard_download_radio_btn")
+                    // Quick Action Buttons (Download, Upload, Save Codeplug)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Download",
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                        OutlinedButton(
+                            onClick = { showDownloadRadioDialog = true },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("dashboard_download_radio_btn")
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Download",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
 
-                    OutlinedButton(
-                        onClick = { showUploadRadioDialog = true },
-                        enabled = channels.isNotEmpty(),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp)
-                            .testTag("dashboard_upload_radio_btn")
-                    ) {
-                        Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Upload",
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                        OutlinedButton(
+                            onClick = { showUploadRadioDialog = true },
+                            enabled = channels.isNotEmpty() && selectedRadio.id != "baofeng_uv32",
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("dashboard_upload_radio_btn")
+                        ) {
+                            Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Upload",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
 
-                    Button(
-                        onClick = { showSaveCodeplugDialog = true },
-                        enabled = isCodeplugLoaded || channels.isNotEmpty(),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp)
-                            .testTag("dashboard_save_codeplug_btn")
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Save Codeplug",
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Button(
+                            onClick = { showSaveCodeplugDialog = true },
+                            enabled = isCodeplugLoaded || channels.isNotEmpty(),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("dashboard_save_codeplug_btn")
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Save",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
 
         // 2. MAIN CONTENT: DEFAULT BLANK SCREEN OR SIMPLE CODEPLUG CHANNEL LIST
         if (!isCodeplugLoaded && channels.isEmpty()) {
@@ -347,17 +360,14 @@ fun CodeplugTabScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "$codeplugTitle • ${selectedRadio.model}",
+                        text = codeplugTitle,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    val rxOnlyExplanation = if (selectedRadio.supportsNativeRxOnly) {
-                        "RxOnly checked = Duplex OFF (TX Inhibited)"
-                    } else {
-                        "RxOnly checked = Low Power FRS1 (462.5625 MHz @ 0.5W) fallback"
-                    }
                     Text(
-                        text = "${channels.size} / ${selectedRadio.maxChannels} ch • $rxOnlyExplanation",
+                        text = "${channels.size} / ${selectedRadio.maxChannels} channels",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -400,9 +410,11 @@ fun CodeplugTabScreen(
                 Checkbox(checked=channels.isNotEmpty() && selectedNumbers.size==channels.size,onCheckedChange={ checked ->
                     selectedNumbers=if(checked) channels.map{it.number}.toSet() else emptySet()
                 })
-                Text("${selectedNumbers.size} selected",modifier=Modifier.weight(1f))
-                TextButton(onClick={showEditSelection=true},enabled=selectedNumbers.isNotEmpty() && !isFlashing){Text("Edit")}
-                TextButton(onClick={showDeleteSelection=true},enabled=selectedNumbers.isNotEmpty() && !isFlashing){Text("Delete")}
+                Text(if (selectedNumbers.isEmpty()) "Select all" else "${selectedNumbers.size} selected", modifier = Modifier.weight(1f))
+                if (selectedNumbers.isNotEmpty()) {
+                    TextButton(onClick = { showEditSelection = true }, enabled = !isFlashing) { Text("Edit") }
+                    TextButton(onClick = { showDeleteSelection = true }, enabled = !isFlashing) { Text("Delete") }
+                }
             }
             // Simple, clean Channel List with Drag-and-Drop & Single RxOnly Checkbox
             LazyColumn(
