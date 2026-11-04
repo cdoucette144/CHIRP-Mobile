@@ -24,9 +24,9 @@ internal object Rt950ProReader {
     )
 
     fun settingsBlocks(original: ByteArray, desired: ByteArray): Map<Int, ByteArray> =
-        mapOf(0x9000 to 0x7d00, 0xc000 to 0x8500, 0xc080 to 0x8580).mapNotNull { (address, offset) ->
+        mapOf(0x9000 to 0x7d00, 0xc000 to 0x8500, 0xc080 to 0x8580, 0 to 0x8600).mapNotNull { (address, offset) ->
             val data = desired.copyOfRange(offset, offset + 128)
-            val zoneWrite = address != 0x9000 &&
+            val zoneWrite = address in 0xc000..0xc080 &&
                 !desired.copyOfRange(0x8500, 0x8600).contentEquals(original.copyOfRange(0x8500, 0x8600))
             if (zoneWrite || !data.contentEquals(original.copyOfRange(offset, offset + 128))) address to data else null
         }.toMap()
@@ -40,7 +40,7 @@ internal object Rt950ProReader {
         progress: (Float, String) -> Unit
     ) {
         require(blocks.isNotEmpty() && blocks.all { (address, data) ->
-            address in setOf(0x9000, 0xc000, 0xc080) && data.size == 128
+            address in setOf(0x9000, 0xc000, 0xc080, 0) && data.size == 128
         })
         transfer(transport, blocks, progress)
     }
@@ -113,10 +113,10 @@ internal object Rt950ProReader {
             }
             if (settingsWrites.isNotEmpty()) {
                 for ((address, data) in settingsWrites) {
-                    val header = byteArrayOf(0x57, (address shr 8).toByte(), address.toByte(), 0x80.toByte())
+                    val header = byteArrayOf(if (address == 0) 0x58 else 0x57, (address shr 8).toByte(), address.toByte(), 0x80.toByte())
                     send(header + ByteArray(data.size) { crypt(data[it], it).toByte() })
-                    ack("settings write %04X".format(address), 10_000)
-                    kotlinx.coroutines.delay(50)
+                    ack("settings write %04X".format(address), if (address == 0) 30_000 else 10_000)
+                    kotlinx.coroutines.delay(if (address == 0) 600 else 50)
                     val message = "[RT-950 PRO WRITE %04X] acknowledged".format(address)
                     android.util.Log.i("ChirpBluetooth", message)
                     progress(0.65f, message)
@@ -194,10 +194,23 @@ internal object Rt950ProReader {
         Setting(0x28, "VOX Switch", offOn)
     )
 
-    val settingOptions: Map<String, List<String>> = functionSettings.associate { it.label to it.options }
+    private val aprsSettings = listOf(
+        Setting(0, "APRS Enable", offOn),
+        Setting(1, "GPS Enable", offOn),
+        Setting(29, "APRS Priority", listOf("Low", "Normal", "High")),
+        Setting(30, "APRS Data TX Delay", levels),
+        Setting(32, "APRS RX Prompt Tone", offOn),
+        Setting(33, "APRS RX Auto Popup", offOn),
+        Setting(40, "APRS Forward Channel", (0..15).map(Int::toString)),
+        Setting(42, "APRS Forward Wait", levels)
+    ).map { it.copy(offset = it.offset + 0x900) }
+
+    private val editableSettings = functionSettings + aprsSettings
+
+    val settingOptions: Map<String, List<String>> = editableSettings.associate { it.label to it.options }
 
     fun settings(image: ByteArray): Map<String, String> = buildMap {
-        for ((offset, label, options) in functionSettings) {
+        for ((offset, label, options) in editableSettings) {
             val raw = image[0x7d00 + offset].toInt() and 255
             if (raw != 255) options.getOrNull(raw and 15)?.let { put(label, it) }
         }
@@ -207,7 +220,7 @@ internal object Rt950ProReader {
         val original = settings(image)
         require(values.keys == original.keys) { "Download the RT-950 Pro settings again before uploading." }
         val result = image.copyOf()
-        for ((offset, label, options) in functionSettings) {
+        for ((offset, label, options) in editableSettings) {
             val value = values[label] ?: continue
             if (original[label] == value) continue
             val index = options.indexOf(value)
