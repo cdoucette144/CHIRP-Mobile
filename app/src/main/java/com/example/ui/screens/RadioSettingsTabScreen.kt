@@ -113,6 +113,7 @@ fun RadioSettingsTabScreen(
                     val enabled = snapshot.gpsEnabled?.let { if (it) "On" else "Off" } ?: "Unknown"
                     val timeZone = snapshot.gpsUtcOffsetHours?.let { "UTC%+d".format(it) } ?: "Unknown"
                     Text("GPS $enabled · ${snapshot.gpsMode ?: "Unknown mode"} · $timeZone")
+                    snapshot.scanMode?.let { Text("Radio scan mode: $it") }
                 }
             }
             item {

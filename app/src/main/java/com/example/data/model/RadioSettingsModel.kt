@@ -4,7 +4,10 @@ data class Uv32SettingsSnapshot(
     val zoneNames: List<String>,
     val gpsEnabled: Boolean?,
     val gpsMode: String?,
-    val gpsUtcOffsetHours: Int?
+    val gpsUtcOffsetHours: Int?,
+    val squelch: Int?,
+    val keypadBeep: Boolean?,
+    val scanMode: String?
 ) {
     companion object {
         fun fromImage(image: ByteArray): Uv32SettingsSnapshot {
@@ -23,7 +26,10 @@ data class Uv32SettingsSnapshot(
                     else -> null
                 },
                 gpsMode = listOf("GPS", "BeiDou", "GPS + BeiDou").getOrNull(unsigned(0x8071)),
-                gpsUtcOffsetHours = unsigned(0x807b).takeIf { it in 0..24 }?.minus(12)
+                gpsUtcOffsetHours = unsigned(0x807b).takeIf { it in 0..24 }?.minus(12),
+                squelch = unsigned(0x8040).takeIf { it in 0..9 },
+                keypadBeep = when (unsigned(0x8046)) { 0 -> false; 1 -> true; else -> null },
+                scanMode = listOf("Time", "Carrier", "Search").getOrNull(unsigned(0x804a))
             )
         }
     }

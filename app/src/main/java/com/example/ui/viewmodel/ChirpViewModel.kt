@@ -516,7 +516,13 @@ class ChirpViewModel(
                     if (radio.id == "baofeng_uv32" || radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
                 programmerManager.lastUv32Settings?.takeIf { radio.id == "baofeng_uv32" }?.let { snapshot ->
-                    _radioSettings.value = _radioSettings.value.copy(uv32Downloaded = snapshot)
+                    val current = _radioSettings.value
+                    _radioSettings.value = current.copy(
+                        uv32Downloaded = snapshot,
+                        squelchLevel = snapshot.squelch ?: current.squelchLevel,
+                        keypadBeep = snapshot.keypadBeep ?: current.keypadBeep,
+                        uv32ZoneNames = snapshot.zoneNames
+                    )
                 }
                 _codeplugTitle.value = "${radio.model} Codeplug"
                 _isCodeplugLoaded.value = true
