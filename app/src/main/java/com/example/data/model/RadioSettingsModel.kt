@@ -1,5 +1,20 @@
 package com.example.data.model
 
+enum class Uv32MenuSetting(val offset: Int, val label: String, val options: List<String>) {
+    BATTERY_SAVE(0x8041, "Battery Save", listOf("Off", "On")),
+    BACKLIGHT(0x8043, "Backlight Timer", listOf("Always On") + (5..20 step 5).map { "$it seconds" }),
+    DUAL_WATCH(0x8044, "Dual Watch", listOf("Off", "On")),
+    TIMEOUT(0x8045, "Transmit Timeout", listOf("Off") + (15..180 step 15).map { "$it seconds" }),
+    VOICE_PROMPTS(0x8047, "Voice Prompts", listOf("Off", "On")),
+    VOICE_LANGUAGE(0x8048, "Voice Language", listOf("English", "Chinese")),
+    DTMF_SIDETONE(0x8049, "DTMF Sidetone", listOf("Off", "Keypad", "ANI", "Keypad + ANI")),
+    SCAN_RESUME(0x804a, "Scan Resume", listOf("Time", "Carrier", "Search")),
+    DISPLAY_A(0x804d, "Channel A Display", listOf("Name", "Frequency", "Channel Number")),
+    DISPLAY_B(0x804e, "Channel B Display", listOf("Name", "Frequency", "Channel Number")),
+    AUTO_LOCK(0x8050, "Keypad Auto Lock", listOf("Off", "On")),
+    TAIL_CLEAR(0x8054, "Squelch Tail Elimination", listOf("Off", "On"));
+}
+
 data class Uv32SettingsSnapshot(
     val zoneNames: List<String>,
     val gpsEnabled: Boolean?,
@@ -7,7 +22,7 @@ data class Uv32SettingsSnapshot(
     val gpsUtcOffsetHours: Int?,
     val squelch: Int?,
     val keypadBeep: Boolean?,
-    val scanMode: String?
+    val menuValues: Map<Uv32MenuSetting, Int>
 ) {
     companion object {
         fun fromImage(image: ByteArray): Uv32SettingsSnapshot {
@@ -29,7 +44,12 @@ data class Uv32SettingsSnapshot(
                 gpsUtcOffsetHours = unsigned(0x807b).takeIf { it in 0..24 }?.minus(12),
                 squelch = unsigned(0x8040).takeIf { it in 0..9 },
                 keypadBeep = when (unsigned(0x8046)) { 0 -> false; 1 -> true; else -> null },
-                scanMode = listOf("Time", "Carrier", "Search").getOrNull(unsigned(0x804a))
+                menuValues = buildMap {
+                    for (setting in Uv32MenuSetting.entries) {
+                        val value = unsigned(setting.offset)
+                        if (value in setting.options.indices) put(setting, value)
+                    }
+                }
             )
         }
     }
@@ -59,7 +79,8 @@ data class RadioSettingsState(
     val pttIdMode: String = "Off",
     val aniCode: String = "101",
     val uv32ZoneNames: List<String> = List(10) { "" },
-    val uv32Downloaded: Uv32SettingsSnapshot? = null
+    val uv32Downloaded: Uv32SettingsSnapshot? = null,
+    val uv32MenuEdits: Map<Uv32MenuSetting, Int> = emptyMap()
 ) {
     fun toCompactString(): String {
         return listOf(

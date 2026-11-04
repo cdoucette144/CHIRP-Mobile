@@ -106,7 +106,6 @@ fun RadioSettingsTabScreen(
                     val enabled = snapshot.gpsEnabled?.let { if (it) "On" else "Off" } ?: "Unknown"
                     val timeZone = snapshot.gpsUtcOffsetHours?.let { "UTC%+d".format(it) } ?: "Unknown"
                     Text("GPS (read only) $enabled · ${snapshot.gpsMode ?: "Unknown mode"} · $timeZone")
-                    snapshot.scanMode?.let { Text("Radio scan mode (read only) $it") }
                 }
             }
             val snapshot = settings.uv32Downloaded ?: return@LazyColumn
@@ -127,6 +126,21 @@ fun RadioSettingsTabScreen(
                         subtitle = "Audible confirmation tone on keypad press",
                         checked = settings.keypadBeep,
                         onCheckedChange = { onUpdateSettings(settings.copy(keypadBeep = it)) }
+                    )
+                }
+            }
+            for ((setting, downloadedValue) in snapshot.menuValues) {
+                item {
+                    val selected = settings.uv32MenuEdits[setting] ?: downloadedValue
+                    SettingChipSelectorRow(
+                        label = setting.label,
+                        options = setting.options,
+                        selected = setting.options[selected],
+                        onSelect = { option ->
+                            onUpdateSettings(settings.copy(
+                                uv32MenuEdits = settings.uv32MenuEdits + (setting to setting.options.indexOf(option))
+                            ))
+                        }
                     )
                 }
             }

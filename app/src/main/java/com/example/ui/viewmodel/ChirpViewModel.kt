@@ -574,6 +574,7 @@ class ChirpViewModel(
                     val current = _radioSettings.value
                     _radioSettings.value = current.copy(
                         uv32Downloaded = snapshot,
+                        uv32MenuEdits = emptyMap(),
                         squelchLevel = snapshot.squelch ?: current.squelchLevel,
                         keypadBeep = snapshot.keypadBeep ?: current.keypadBeep,
                         uv32ZoneNames = snapshot.zoneNames

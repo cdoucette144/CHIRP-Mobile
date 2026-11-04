@@ -18,6 +18,15 @@ internal object Uv32SettingsPatch {
             require(fresh.keypadBeep == baseline.keypadBeep) { "Radio keypad beep changed since the last download." }
             updated[0x8046] = if (settings.keypadBeep) 1 else 0
         }
+        for ((setting, value) in settings.uv32MenuEdits) {
+            val previous = baseline.menuValues[setting]
+            if (value == previous) continue
+            require(previous != null && fresh.menuValues[setting] == previous) {
+                "Radio ${setting.label} changed since the last download."
+            }
+            require(value in setting.options.indices)
+            updated[setting.offset] = value.toByte()
+        }
         require(settings.uv32ZoneNames.size == 10)
         settings.uv32ZoneNames.forEachIndexed { index, name ->
             if (name != baseline.zoneNames[index]) {
