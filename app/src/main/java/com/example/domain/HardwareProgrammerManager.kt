@@ -1089,7 +1089,7 @@ class HardwareProgrammerManager(private val context: Context) {
         val after = channels.associateBy { it.number }
         require(after.size == channels.size) { "Duplicate channel slots." }
         val edits = (before.keys + after.keys).filter { before[it] != after[it] }.toSet()
-        val transport = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.03f, it) }
+        var transport = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.03f, it) }
         try {
             readColorClone(transport, { pct, msg -> progress(pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = true)
             val original = checkNotNull(lastUv32Image)
@@ -1118,6 +1118,10 @@ class HardwareProgrammerManager(private val context: Context) {
                 for (offset in 0 until 192 step 64)
                     add(0xa2c0 + offset to extras.copyOfRange(128 + offset, 192 + offset))
             }
+            // A backup is a complete download session. Start a fresh clone session for writing.
+            MiniSessionExit.finish(transport)
+            transport = openBleOrSppTransport(address, configureUv32Baud = true) { progress(0.33f, it) }
+            initializeColorClone(transport, true) { pct, message -> progress(0.33f + pct * 0.02f, message) }
             uv32Baseline = null
             val key = intArrayOf(0x43, 0x4f, 0x20, 0x37)
             for ((index, block) in blocks.withIndex()) {
@@ -1156,9 +1160,7 @@ class HardwareProgrammerManager(private val context: Context) {
         }
     }
 
-    private suspend fun readColorClone(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true, uv32: Boolean = false, includeUv32Extras: Boolean = false): List<RadioChannel> {
-        val model = if (uv32) "UV-32" else "Mini"
-        suspend fun exchange(command: ByteArray, length: Int, label: String): ByteArray {
+    private suspend fun exchangeColorClone(transport: RadioSerialTransport, model: String, command: ByteArray, length: Int, label: String): ByteArray {
             android.util.Log.i("ChirpBluetooth", "$model $label TX=" + command.joinToString(" ") { "%02X".format(it) })
             transport.writeBytes(command)
             val reply = transport.readBytes(length, 4000L)
@@ -1166,24 +1168,34 @@ class HardwareProgrammerManager(private val context: Context) {
             if (reply.size != length) throw IOException("$model $label: expected $length bytes, received ${reply.size}. Close other radio apps and reconnect.")
             return reply
         }
-        if (initialize) {
+
+    private suspend fun initializeColorClone(
+        transport: RadioSerialTransport,
+        uv32: Boolean,
+        onProgress: (Float, String) -> Unit
+    ) {
+        val model = if (uv32) "UV-32" else "Mini"
         transport.clearRxBuffer()
-        val ack = exchange("PROGRAMCOLORPROU".toByteArray(Charsets.US_ASCII), 1, "program handshake")
+        val ack = exchangeColorClone(transport, model, "PROGRAMCOLORPROU".toByteArray(Charsets.US_ASCII), 1, "program handshake")
         if (ack[0] != 0x06.toByte()) {
             val reply = "0x%02X".format(ack[0].toInt() and 0xff)
             val reason = "$model rejected the programming handshake (reply $reply, expected 0x06)."
             android.util.Log.w("ChirpBluetooth", reason)
             throw IOException(reason)
         }
-        val firmware = exchange(byteArrayOf(0x46), 16, "firmware identification")
+        val firmware = exchangeColorClone(transport, model, byteArrayOf(0x46), 16, "firmware identification")
         onProgress(0.10f, "[$model IDENT] " + firmware.joinToString(" ") { "%02X".format(it) })
-        val modelId = exchange(byteArrayOf(0x4d), if (uv32) 7 else 15, "model identification")
+        val modelId = exchangeColorClone(transport, model, byteArrayOf(0x4d), if (uv32) 7 else 15, "model identification")
         if (uv32 && modelId.toString(Charsets.US_ASCII) != "UV32PRO") {
             throw IOException("Unexpected UV-32 model reply: " + modelId.joinToString(" ") { "%02X".format(it) })
         }
         val init = byteArrayOf(0x53,0x45,0x4e,0x44,0x21,0x05,0x0d,0x01,0x01,0x01,0x04,0x11,0x08,0x05,0x0d,0x0d,0x01,0x11,0x0f,0x09,0x12,0x09,0x10,0x04,0x00)
-        if (exchange(init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("$model session initialization rejected.")
-        }
+        if (exchangeColorClone(transport, model, init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("$model session initialization rejected.")
+    }
+
+    private suspend fun readColorClone(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true, uv32: Boolean = false, includeUv32Extras: Boolean = false): List<RadioChannel> {
+        val model = if (uv32) "UV-32" else "Mini"
+        if (initialize) initializeColorClone(transport, uv32, onProgress)
         val image = ByteArrayOutputStream()
         val key = byteArrayOf(0x43,0x4f,0x20,0x37)
         val ranges = if (uv32) listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x02c0, 0xd000 to 0x0040)
@@ -1192,7 +1204,7 @@ class HardwareProgrammerManager(private val context: Context) {
         val total = readRanges.sumOf { it.second }
         for ((start, size) in readRanges) {
             for (address in start until start + size step 64) {
-                val reply = exchange(byteArrayOf(0x52,(address shr 8).toByte(),address.toByte(),0x40),68,"read %04X".format(address))
+                val reply = exchangeColorClone(transport, model, byteArrayOf(0x52,(address shr 8).toByte(),address.toByte(),0x40),68,"read %04X".format(address))
                 if (reply[0] != 0x57.toByte() && reply[0] != 0x52.toByte()) throw IOException("Mini invalid read response header at %04X".format(address))
                 if ((reply[1].toInt() and 255) != (address shr 8) || (reply[2].toInt() and 255) != (address and 255) || reply[3] != 0x40.toByte()) throw IOException("Mini read address/length mismatch.")
                 val payload = reply.copyOfRange(4,68)

@@ -613,6 +613,18 @@ class ChirpViewModel(
             return
         }
 
+        if (radio.model.contains("UV-5R Mini")) {
+            val invalid = channels.filter { channel ->
+                channel.name.length > 12 || channel.name.any { it.code !in 32..126 }
+            }
+            if (invalid.isNotEmpty()) {
+                val examples = invalid.take(5).joinToString { "#${it.number} ${it.name}" }
+                val remaining = if (invalid.size > 5) " and ${invalid.size - 5} more" else ""
+                _statusBanner.value = "UV-5R Mini names must be 12 printable ASCII characters or fewer. Fix $examples$remaining."
+                return
+            }
+        }
+
         lastProgrammerManager = programmerManager
         lastRadio = radio
         lastTransportMode = transportMode
