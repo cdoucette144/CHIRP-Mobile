@@ -114,6 +114,9 @@ fun CodeplugTabScreen(
     flashLogs: List<String>,
     onSelectRadio: (classSupportedRadioModel) -> Unit,
     onToggleRxOnly: (Int, Boolean) -> Unit,
+    onBulkRxOnly: (Set<Int>, Boolean) -> Unit,
+    onRenumber: (Int, Int) -> Boolean,
+    onImportChannels: (List<RadioChannel>, Int) -> Unit,
     onMoveChannel: (Int, Int) -> Unit,
     onSaveOrAddChannel: (RadioChannel, Boolean) -> Unit,
     onDeleteChannel: (Int) -> Unit,
@@ -141,11 +144,42 @@ fun CodeplugTabScreen(
 
     val supportsZones = selectedRadio.id == "baofeng_uv32"
     var selectedZone by remember(selectedRadio.id, codeplugTitle) { mutableStateOf(0) }
+    var addMenu by remember { mutableStateOf(false) }
+    var showReference by remember { mutableStateOf(false) }
+    var slotToEdit by remember { mutableStateOf<Int?>(null) }
     var showZones by remember { mutableStateOf(false) }
     val visibleChannels = if (!supportsZones || selectedZone == 0) channels else channels.filter {
         it.number in ((selectedZone - 1) * 100 + 1)..(selectedZone * 100)
     }
     var selectedNumbers by remember(channels, selectedZone) { mutableStateOf(emptySet<Int>()) }
+    if (showReference) {
+        RadioReferenceHierarchicalBrowser(selectedRadio, { showReference = false }, null) { imported, _ ->
+            onImportChannels(imported, selectedZone)
+            showReference = false
+        }
+        return
+    }
+    slotToEdit?.let { slot ->
+        var input by remember(slot) { mutableStateOf(slot.toString()) }
+        var failed by remember(slot) { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { slotToEdit = null },
+            title = { Text("Move channel $slot") },
+            text = {
+                Column {
+                    OutlinedTextField(input, { input = it.filter(Char::isDigit).take(4); failed = false },
+                        label = { Text("Destination slot") }, singleLine = true, isError = failed)
+                    if (failed) Text("Invalid slot or no room to shift occupied slots upward.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (onRenumber(slot, input.toIntOrNull() ?: 0)) slotToEdit = null else failed = true
+                }) { Text("Move") }
+            },
+            dismissButton = { TextButton(onClick = { slotToEdit = null }) { Text("Cancel") } }
+        )
+    }
     val channelListState = rememberLazyListState()
     val channelDrag = remember(channelListState) { RadioListDrag(channelListState) }
     androidx.compose.runtime.LaunchedEffect(selectedZone) { channelListState.scrollToItem(0) }
@@ -360,14 +394,17 @@ fun CodeplugTabScreen(
                     ) {
                         Text("Open")
                     }
-                    TextButton(
-                        onClick = {
+                    Box {
+                        TextButton(onClick = { addMenu = true }, modifier = Modifier.testTag("codeplug_add_channel_btn")) { Text("+ Add Ch") }
+                        DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
+                            DropdownMenuItem(text = { Text("Add manually") }, onClick = {
+                                addMenu = false
                             isAddingNewChannel = true
                             editingChannel = RadioChannel(
                                 number = if (supportsZones) {
                                     val range = if (selectedZone == 0) 1..selectedRadio.maxChannels
                                         else ((selectedZone - 1) * 100 + 1)..(selectedZone * 100)
-                                    range.firstOrNull { slot -> channels.none { it.number == slot } } ?: return@TextButton
+                                    range.firstOrNull { slot -> channels.none { it.number == slot } } ?: return@DropdownMenuItem
                                 } else channels.size + 1,
                                 name = "CH ${(channels.size + 1).toString().padStart(2, '0')}",
                                 rxFreqHz = 146520000L,
@@ -380,12 +417,12 @@ fun CodeplugTabScreen(
                                 power = PowerLevel.HIGH,
                                 rxOnly = false
                             )
-                        },
-                        modifier = Modifier.testTag("codeplug_add_channel_btn")
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text("Add Ch")
+                            })
+                            DropdownMenuItem(text = { Text("Import RadioReference") }, onClick = {
+                                addMenu = false
+                                showReference = true
+                            })
+                        }
                     }
                 }
             }
@@ -399,6 +436,10 @@ fun CodeplugTabScreen(
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.weight(1f)
                 )
+                TextButton(enabled = visibleChannels.isNotEmpty() && !isFlashing, onClick = {
+                    onBulkRxOnly(visibleChannels.map { it.number }.toSet(), visibleChannels.any { !it.rxOnly })
+                }) { Text(if (visibleChannels.isNotEmpty() && visibleChannels.all { it.rxOnly }) "Clear RX" else "RX all",
+                    style = MaterialTheme.typography.labelSmall) }
                 if (supportsZones) {
                     Box {
                         TextButton(onClick = { showZones = true }) {
@@ -472,7 +513,7 @@ fun CodeplugTabScreen(
                                     selectedNumbers=if(checked) selectedNumbers+channel.number else selectedNumbers-channel.number
                                 },
                                 enabled=!isFlashing,
-                                modifier=Modifier.testTag("select_channel_${channel.number}")
+                                modifier=Modifier.size(36.dp).testTag("select_channel_${channel.number}")
                             )
                             // Drag Handle + Quick Up/Down Reorder
                             Box(
@@ -493,7 +534,7 @@ fun CodeplugTabScreen(
                                 text = channel.number.toString().padStart(2, '0'),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = AmberVfoPrimary,
-                                modifier = Modifier.width(28.dp)
+                                modifier = Modifier.width(36.dp).clickable(enabled = !isFlashing) { slotToEdit = channel.number }
                             )
 
                             // Simple Channel Name & RX Frequency (Click row to see/edit PL, DPL, Offset, etc.)
@@ -521,53 +562,13 @@ fun CodeplugTabScreen(
                                 )
                             }
 
-                            // Up/Down quick reorder buttons for precision
-                            IconButton(
-                                onClick = { if (index > 0) moveVisibleChannel(index, index - 1) },
-                                enabled = index > 0,
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowUpward,
-                                    contentDescription = "Move up",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = { if (index < visibleChannels.lastIndex) moveVisibleChannel(index, index + 1) },
-                                enabled = index < visibleChannels.lastIndex,
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDownward,
-                                    contentDescription = "Move down",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(4.dp))
-
-                            // SINGLE RxOnly Checkbox next to the channel
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        onToggleRxOnly(channel.number, !channel.rxOnly)
-                                    }
-                                    .padding(horizontal = 4.dp)
-                            ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Rx Only", style = MaterialTheme.typography.labelSmall)
                                 Checkbox(
                                     checked = channel.rxOnly,
-                                    onCheckedChange = { checked ->
-                                        onToggleRxOnly(channel.number, checked)
-                                    },
-                                    modifier = Modifier.testTag("rx_only_checkbox_${channel.number}")
-                                )
-                                Text(
-                                    text = "RxOnly",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (channel.rxOnly) RxSafeGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                                    onCheckedChange = { onToggleRxOnly(channel.number, it) },
+                                    enabled = !isFlashing,
+                                    modifier = Modifier.size(36.dp).testTag("rx_only_checkbox_${channel.number}")
                                 )
                             }
                         }

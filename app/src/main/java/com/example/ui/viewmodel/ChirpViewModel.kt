@@ -393,6 +393,48 @@ class ChirpViewModel(
      *   have native RX-only (e.g. Baofeng UV-5R Mini), in which case it sets TX to FRS Ch 1 (462.5625 MHz @ Low Power).
      * - If unchecked: restores standard transmit / repeater offset capability on that channel.
      */
+    fun setCodeplugRxOnly(slots: Set<Int>, enabled: Boolean) {
+        val radio = _selectedRadio.value
+        _codeplugChannels.value = _codeplugChannels.value.map { channel ->
+            if (channel.number in slots && (enabled || channel.mode != "AM") && channel.rxOnly != enabled)
+                normalizeChannelForRadio(channel, enabled, radio)
+            else channel
+        }
+    }
+
+    fun renumberCodeplugChannel(source: Int, destination: Int): Boolean {
+        val current = _codeplugChannels.value
+        val channel = current.firstOrNull { it.number == source } ?: return false
+        if (destination !in 1.._selectedRadio.value.maxChannels) return false
+        if (source == destination) return true
+        val occupied = current.filterNot { it.number == source }.associateBy { it.number }.toMutableMap()
+        val free = (destination.._selectedRadio.value.maxChannels).firstOrNull { it !in occupied } ?: return false
+        for (slot in free downTo destination + 1) {
+            occupied[slot] = occupied.getValue(slot - 1).copy(number = slot)
+        }
+        occupied[destination] = channel.copy(number = destination)
+        _codeplugChannels.value = occupied.values.sortedBy { it.number }
+        return true
+    }
+
+    fun importIntoCodeplug(imported: List<RadioChannel>, zone: Int) {
+        val radio = _selectedRadio.value
+        val current = _codeplugChannels.value
+        val used = current.map { it.number }.toSet()
+        val range = if (radio.id == "baofeng_uv32" && zone in 1..10)
+            ((zone - 1) * 100 + 1)..(zone * 100) else 1..radio.maxChannels
+        val free = range.filterNot { it in used }
+        if (free.size < imported.size) {
+            _statusBanner.value = "There are only ${free.size} free slots in this view."
+            return
+        }
+        _codeplugChannels.value = (current + imported.zip(free) { channel, slot ->
+            normalizeChannelForRadio(channel.copy(number = slot), channel.rxOnly, radio)
+        }).sortedBy { it.number }
+        _isCodeplugLoaded.value = true
+        _statusBanner.value = "Imported ${imported.size} channels into the codeplug."
+    }
+
     fun toggleChannelRxOnly(channelNumber: Int, rxOnlyChecked: Boolean) {
         val radio = _selectedRadio.value
         _codeplugChannels.value = _codeplugChannels.value.map { ch ->

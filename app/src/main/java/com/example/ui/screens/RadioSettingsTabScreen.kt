@@ -78,12 +78,7 @@ fun RadioSettingsTabScreen(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        ConnectivityStatusBadge(
-                            state = connectivityState,
-                            onRetry = onRetryConnection,
-                            onDisconnect = onDisconnectHardware,
-                            onTapBadge = {}
-                        )
+
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     RadioBrandModelDropdowns(

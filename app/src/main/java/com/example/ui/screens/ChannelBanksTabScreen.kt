@@ -644,10 +644,10 @@ private fun BankReorderHandle(
 }
 
 @Composable
-private fun RadioReferenceHierarchicalBrowser(
+internal fun RadioReferenceHierarchicalBrowser(
     selectedRadio: classSupportedRadioModel,
     onBack: () -> Unit,
-    onImportCsv: () -> Unit,
+    onImportCsv: (() -> Unit)?,
     onImportSelectedChannels: (List<RadioChannel>, String) -> Unit
 ) {
     // Drill-down state:
@@ -676,7 +676,7 @@ private fun RadioReferenceHierarchicalBrowser(
     ) {
         Text("Your RadioReference exports • source alpha tags and separate RX/TX tones preserved • all agencies together. Monitor defaults apply when adding a bank to a radio.",
             modifier=Modifier.padding(12.dp),color=MaterialTheme.colorScheme.error)
-        Button(onClick=onImportCsv,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp)) {
+        if (onImportCsv != null) Button(onClick=onImportCsv,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp)) {
             Text("Import RadioReference CSV • all agencies together")
         }
 

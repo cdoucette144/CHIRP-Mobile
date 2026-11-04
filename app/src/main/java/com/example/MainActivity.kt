@@ -214,7 +214,7 @@ fun AuthenticatedFieldWorkspace(
                         }
                     },
                     actions = {
-                        if (currentTab == MainTab.CODEPLUG) {
+                        if (currentTab != MainTab.CHANNEL_BANKS) {
                             val (description, tint) = when {
                                 isFlashing || connectivityState.status == HardwareConnectionStatus.CONNECTING ->
                                     "Radio transfer in progress" to Color(0xFFFFC547)
@@ -224,7 +224,10 @@ fun AuthenticatedFieldWorkspace(
                                     "Radio error" to Color(0xFFF36C68)
                                 else -> "Radio disconnected" to Color(0xFFF36C68)
                             }
-                            IconButton(onClick = { showCodeplugRadioControls = !showCodeplugRadioControls }) {
+                            IconButton(onClick = {
+                                if (currentTab == MainTab.CODEPLUG) showCodeplugRadioControls = !showCodeplugRadioControls
+                                else { currentTab = MainTab.CODEPLUG; showCodeplugRadioControls = true }
+                            }) {
                                 Icon(Icons.Default.Radio, contentDescription = description, tint = tint)
                             }
                         }
@@ -386,6 +389,9 @@ fun AuthenticatedFieldWorkspace(
                                 onSelectRadio = { radio ->
                                     viewModel.selectRadioModelForCodeplug(radio)
                                 },
+                                onBulkRxOnly = viewModel::setCodeplugRxOnly,
+                                onRenumber = viewModel::renumberCodeplugChannel,
+                                onImportChannels = viewModel::importIntoCodeplug,
                                 onToggleRxOnly = { channelNum, rxOnlyChecked ->
                                     viewModel.toggleChannelRxOnly(channelNum, rxOnlyChecked)
                                 },
