@@ -262,7 +262,7 @@ class HardwareProgrammerManager(private val context: Context) {
         onLog: (String) -> Unit
     ): RadioSerialTransport = withContext(Dispatchers.IO) {
         if (bleAddress.isBlank()) {
-            throw IOException("No Bluetooth radio selected. Tap 'Scan BLE', tap your UV-5R Mini in the list, and try again.")
+            throw IOException("No Bluetooth radio selected. Tap Find radios, then select your radio.")
         }
         val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val adapter: BluetoothAdapter = btManager?.adapter
@@ -402,7 +402,7 @@ class HardwareProgrammerManager(private val context: Context) {
         if (writeChar == null || notifyChar == null) {
             connectedGatt.disconnect()
             connectedGatt.close()
-            throw IOException("Selected Bluetooth device does not expose the Mini programming UART (FFE0/FFE1). Select the radio's programming device, not its audio/control connection. Discovered services: " + customServices.joinToString { it.uuid.toString().take(8) })
+            throw IOException("Selected Bluetooth device does not expose the expected programming UART (FFE0/FFE1). Select the radio's programming device, not its audio/control connection. Discovered services: " + customServices.joinToString { it.uuid.toString().take(8) })
         }
 
         val finalWriteChar = writeChar!!
@@ -776,6 +776,9 @@ class HardwareProgrammerManager(private val context: Context) {
         usbDeviceName: String,
         onProgress: (Float, String) -> Unit
     ): List<RadioChannel> = withContext(Dispatchers.IO) {
+        val uv32 = radio.id == "baofeng_uv32"
+        lastPersistenceMessage = null
+        if (uv32 && transportMode != "Bluetooth LE") throw IOException("Use Bluetooth for the UV-32 test download.")
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress) { line -> onProgress(0.08f, line) }
@@ -784,9 +787,10 @@ class HardwareProgrammerManager(private val context: Context) {
         }
 
         try {
+            if (uv32) return@withContext readColorClone(transport, onProgress, uv32 = true)
             if (radio.model.contains("UV-5R Mini")) {
                 lastPersistenceMessage = null
-                val result = readMini(transport,onProgress)
+                val result = readColorClone(transport,onProgress)
                 val pending = java.io.File(context.filesDir,"mini-pending-verification.bin")
                 if (pending.exists()) {
                     val matches = pending.readBytes().contentEquals(checkNotNull(lastMiniImage))
@@ -888,6 +892,7 @@ class HardwareProgrammerManager(private val context: Context) {
         channels: List<RadioChannel>,
         onProgress: (Float, String) -> Unit
     ) = withContext(Dispatchers.IO) {
+        if (radio.id == "baofeng_uv32") throw IOException("UV-32 upload is unavailable in this test build.")
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress) { line -> onProgress(0.08f, line) }
@@ -897,7 +902,7 @@ class HardwareProgrammerManager(private val context: Context) {
 
         try {
             if (radio.model.contains("UV-5R Mini")) {
-                readMini(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
+                readColorClone(transport, { pct, message -> onProgress(pct * 0.35f, "[BACKUP] $message") })
                 val original = checkNotNull(lastMiniImage).copyOf()
                 val desired = MiniChannelPatch.apply(original, channels)
                 if (original.contentEquals(desired)) {
@@ -928,7 +933,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 MiniSessionExit.finish(transport)
                 val verifyTransport = if(transportMode=="Bluetooth LE") openBleOrSppTransport(bleAddress) { android.util.Log.i("ChirpBluetooth",it) } else openUsbOtgTransport(usbDeviceName) { android.util.Log.i("ChirpBluetooth",it) }
                 try {
-                    readMini(verifyTransport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[RECONNECT VERIFY] $message") })
+                    readColorClone(verifyTransport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[RECONNECT VERIFY] $message") })
                     val actual = checkNotNull(lastMiniImage)
                     val matches = desired.contentEquals(actual)
                     MiniSessionExit.finish(verifyTransport,reconnectWaitMs=0)
@@ -1011,28 +1016,32 @@ class HardwareProgrammerManager(private val context: Context) {
     /** Mini protocol reference: CHIRP baofeng_uv17Pro.py, UV5RMini.
      * Read-only: preserve the complete decrypted image before decoding channels.
      */
-    private suspend fun readMini(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true): List<RadioChannel> {
+    private suspend fun readColorClone(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true, uv32: Boolean = false): List<RadioChannel> {
+        val model = if (uv32) "UV-32" else "Mini"
         suspend fun exchange(command: ByteArray, length: Int, label: String): ByteArray {
-            android.util.Log.i("ChirpBluetooth", "Mini $label TX=" + command.joinToString(" ") { "%02X".format(it) })
+            android.util.Log.i("ChirpBluetooth", "$model $label TX=" + command.joinToString(" ") { "%02X".format(it) })
             transport.writeBytes(command)
             val reply = transport.readBytes(length, 4000L)
-            android.util.Log.i("ChirpBluetooth", "Mini $label RX ${reply.size}/$length bytes")
-            if (reply.size != length) throw IOException("Mini $label: expected $length bytes, received ${reply.size}. Close other radio apps and reconnect.")
+            android.util.Log.i("ChirpBluetooth", "$model $label RX ${reply.size}/$length bytes")
+            if (reply.size != length) throw IOException("$model $label: expected $length bytes, received ${reply.size}. Close other radio apps and reconnect.")
             return reply
         }
         if (initialize) {
         transport.clearRxBuffer()
         val ack = exchange("PROGRAMCOLORPROU".toByteArray(Charsets.US_ASCII), 1, "program handshake")
-        if (ack[0] != 0x06.toByte()) throw IOException("Mini rejected program handshake.")
+        if (ack[0] != 0x06.toByte()) throw IOException("$model rejected program handshake.")
         val firmware = exchange(byteArrayOf(0x46), 16, "firmware identification")
-        onProgress(0.10f, "[MINI IDENT] " + firmware.joinToString(" ") { "%02X".format(it) })
-        exchange(byteArrayOf(0x4d), 15, "model identification")
+        onProgress(0.10f, "[$model IDENT] " + firmware.joinToString(" ") { "%02X".format(it) })
+        exchange(byteArrayOf(0x4d), if (uv32) 7 else 15, "model identification")
         val init = byteArrayOf(0x53,0x45,0x4e,0x44,0x21,0x05,0x0d,0x01,0x01,0x01,0x04,0x11,0x08,0x05,0x0d,0x0d,0x01,0x11,0x0f,0x09,0x12,0x09,0x10,0x04,0x00)
-        if (exchange(init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("Mini session initialization rejected.")
+        if (exchange(init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("$model session initialization rejected.")
         }
         val image = ByteArrayOutputStream()
         val key = byteArrayOf(0x43,0x4f,0x20,0x37)
-        for ((start, size) in listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x01c0)) {
+        val ranges = if (uv32) listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x02c0, 0xd000 to 0x0040)
+            else listOf(0x0000 to 0x8040, 0x9000 to 0x0040, 0xa000 to 0x01c0)
+        val total = ranges.sumOf { it.second }
+        for ((start, size) in ranges) {
             for (address in start until start + size step 64) {
                 val reply = exchange(byteArrayOf(0x52,(address shr 8).toByte(),address.toByte(),0x40),68,"read %04X".format(address))
                 if (reply[0] != 0x57.toByte() && reply[0] != 0x52.toByte()) throw IOException("Mini invalid read response header at %04X".format(address))
@@ -1044,15 +1053,16 @@ class HardwareProgrammerManager(private val context: Context) {
                     if (k != 32 && value != 0 && value != 255 && value != k && value != (k xor 255)) payload[i] = (value xor k).toByte()
                 }
                 image.write(payload)
-                onProgress(0.15f + 0.80f * image.size() / 0x8240, "[MINI READ %04X] %d / 33344 bytes".format(address,image.size()))
+                onProgress(0.15f + 0.80f * image.size() / total, "[$model READ %04X] %d / %d bytes".format(address, image.size(), total))
             }
         }
         val bytes = image.toByteArray()
-        lastMiniImage = bytes.copyOf()
-        val backup = java.io.File(context.filesDir, "mini-backups").apply { mkdirs() }
-        val file = java.io.File(backup, "uv5r-mini-${System.currentTimeMillis()}.bin")
+        if (!uv32) lastMiniImage = bytes.copyOf()
+        val backup = java.io.File(context.filesDir, if (uv32) "uv32-backups" else "mini-backups").apply { mkdirs() }
+        val file = java.io.File(backup, "${if (uv32) "uv32" else "uv5r-mini"}-${System.currentTimeMillis()}.bin")
         file.writeBytes(bytes)
-        val channels = (0 until 999).mapNotNull { slot ->
+        val invalidSlots = mutableListOf<Int>()
+        val channels = (0 until (if (uv32) 1000 else 999)).mapNotNull { slot ->
             val offset = slot * 32
             if (bytes[offset] == 0xff.toByte()) return@mapNotNull null
             fun frequency(at: Int): Long {
@@ -1070,22 +1080,36 @@ class HardwareProgrammerManager(private val context: Context) {
                 val value = (bytes[at].toInt() and 255) or ((bytes[at+1].toInt() and 255) shl 8)
                 return MiniToneCodec.decode(value)
             }
-            val rx = frequency(offset)
             val off = (4..7).all { bytes[offset+it] == 0xff.toByte() }
-            val tx = if (off) rx else frequency(offset+4)
+            val (rx, tx) = try {
+                val rx = frequency(offset)
+                rx to if (off) rx else frequency(offset + 4)
+            } catch (error: IOException) {
+                if (!uv32) throw error
+                invalidSlots.add(slot + 1)
+                return@mapNotNull null
+            }
             val name = bytes.copyOfRange(offset+20,offset+32).map { it.toInt() and 255 }.takeWhile { it != 0 && it != 255 }.map { it.toChar() }.joinToString("").trim().ifBlank { "CH ${slot+1}" }
             RadioChannel(number=slot+1,name=name,rxFreqHz=rx,txFreqHz=tx,
                 duplex=if(off) DuplexMode.OFF else if(tx==rx) DuplexMode.SIMPLEX else DuplexMode.SPLIT,
                 offsetHz=abs(tx-rx),rxTone=tone(offset+8),txTone=tone(offset+10),
                 mode=if(rx in 108000000L..135999999L) "AM" else if((bytes[offset+15].toInt() and 0x40)!=0) "FM" else "NFM",
-                power=if((bytes[offset+14].toInt() and 3)==1) PowerLevel.LOW else PowerLevel.HIGH,
-                rxOnly=off,notes="Mini download; complete raw backup retained on device.",
+                power=when (bytes[offset+14].toInt() and 3) {
+                    1 -> PowerLevel.LOW
+                    2 -> if (uv32) PowerLevel.MID else PowerLevel.HIGH
+                    else -> PowerLevel.HIGH
+                },
+                rxOnly=off,notes="$model download; complete raw backup retained on device.",
                 scanIncluded=(bytes[offset+15].toInt() and 4)!=0,
                 busyChannelLockout=(bytes[offset+15].toInt() and 8)!=0,
                 fhssPrivacy=(bytes[offset+15].toInt() and 1)!=0,
                 pttId=(bytes[offset+13].toInt() and 255).takeIf { it in 0..3 })
         }
-        onProgress(1f,"[MINI COMPLETE] ${channels.size} channels; backup ${file.name}.")
+        if (uv32) {
+            lastPersistenceMessage = "UV-32: downloaded ${channels.size} channels and saved a raw backup." +
+                if (invalidSlots.isEmpty()) "" else " Skipped invalid frequency slots: ${invalidSlots.joinToString()}."
+        }
+        onProgress(1f,"[$model COMPLETE] ${channels.size} channels; backup ${file.name}.")
         return channels
     }
 

@@ -38,7 +38,7 @@ object RadioCatalog {
             transport = TransportInterface.BOTH,
             supportsNativeRxOnly = true,
             eepromIdent = "BF-UV32",
-            protocolNotes = "1000 memory channels across 10 zones. Features Bluetooth LE wireless programming and USB-C/K-Plug CHIRP serial clone."
+            protocolNotes = "1000 channel slots across 10 zones. Enable Wireless CPS on the radio for the Bluetooth test download."
         ),
         classSupportedRadioModel(
             id = "baofeng_uv5_mini",

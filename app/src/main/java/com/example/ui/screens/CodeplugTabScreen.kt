@@ -757,7 +757,7 @@ fun ChannelDetailEditorModal(
             ) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it.take(if(selectedRadio.model.contains("UV-5R Mini")) 12 else 16) },
+                    onValueChange = { name = it.take(if(selectedRadio.id == "baofeng_uv32" || selectedRadio.model.contains("UV-5R Mini")) 12 else 16) },
                     label = { Text("Channel Name") },
                     singleLine = true,
                     modifier = Modifier
@@ -899,7 +899,7 @@ fun ChannelDetailEditorModal(
                 }
                 com.example.ui.components.ChoiceDropdown("Receive tone",toneOptions,rxToneChoice,{rxToneChoice=it})
                 com.example.ui.components.ChoiceDropdown("Transmit tone",toneOptions,txToneChoice,{txToneChoice=it})
-                if(selectedRadio.model.contains("UV-5R Mini")) {
+                if(selectedRadio.id == "baofeng_uv32" || selectedRadio.model.contains("UV-5R Mini")) {
                     Row(verticalAlignment=Alignment.CenterVertically) {
                         Checkbox(checked=scanIncluded ?: true,onCheckedChange={scanIncluded=it})
                         Text("Include in scan")
@@ -912,7 +912,7 @@ fun ChannelDetailEditorModal(
                         Checkbox(checked=fhssPrivacy ?: false,onCheckedChange={fhssPrivacy=it})
                         Text("FHSS / analog privacy")
                     }
-                    Text("This is the radio's analog privacy feature, not digital encryption.",style=MaterialTheme.typography.bodySmall)
+                    Text("Analog privacy for compatible radios.", style = MaterialTheme.typography.bodySmall)
                     val pttChoices=listOf("Keep radio value","Off","Begin","End","Both")
                     val currentPtt=pttId?.takeIf{it in 0..3}?.let{pttChoices[it+1]} ?: pttChoices[0]
                     com.example.ui.components.ChoiceDropdown("PTT ID",pttChoices,currentPtt,{pttId=pttChoices.indexOf(it).takeIf{it>0}?.minus(1)})
@@ -925,7 +925,11 @@ fun ChannelDetailEditorModal(
                         FilterChip(
                             selected = power == p,
                             onClick = { power = p },
-                            label = { Text(p.wattsLabel) }
+                            label = { Text(if (selectedRadio.id == "baofeng_uv32") when (p) {
+                                PowerLevel.LOW -> "2 W Low"
+                                PowerLevel.MID -> "5 W Mid"
+                                PowerLevel.HIGH -> "10 W High"
+                            } else p.wattsLabel) }
                         )
                     }
                 }
@@ -1016,13 +1020,13 @@ private fun HardwareTransferModal(
     onExecute: (classSupportedRadioModel, String, String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var transport by remember { mutableStateOf("Bluetooth LE") }
+    var transport by remember(selectedRadio.id) { mutableStateOf("Bluetooth LE") }
     var usbCables by remember { mutableStateOf(programmerManager.scanUsbOtgDevices()) }
     var selectedUsbDeviceName by remember { mutableStateOf(usbCables.firstOrNull()?.deviceName ?: "") }
     val bleDevices = remember { mutableStateListOf<DetectedBleRadio>() }
     var selectedBleAddress by remember { mutableStateOf("") }
     var stopBleScanRef by remember { mutableStateOf<() -> Unit>({}) }
-    var bleStatus by remember { mutableStateOf("Tap 'Scan BLE' and select your Baofeng UV-5R Mini or Bluetooth programmer.") }
+    var bleStatus by remember { mutableStateOf("Find nearby radios, then choose the one you want to use.") }
 
     val blePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -1030,14 +1034,12 @@ private fun HardwareTransferModal(
         if (grants.values.all { it }) {
             stopBleScanRef()
             bleDevices.clear()
-            bleStatus = "Scanning BLE & Paired radios..."
+            selectedBleAddress = ""
+            bleStatus = "Choose your radio from the list."
             stopBleScanRef = programmerManager.startBleScan(
                 onDeviceFound = { dev ->
                     if (bleDevices.none { it.address == dev.address }) {
                         bleDevices.add(dev)
-                        if (selectedBleAddress.isBlank() || dev.isRadioProgrammer) {
-                            selectedBleAddress = dev.address
-                        }
                     }
                 },
                 onError = { err -> bleStatus = err }
@@ -1062,16 +1064,17 @@ private fun HardwareTransferModal(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("1. Select Radio Model:", style = MaterialTheme.typography.labelLarge)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(RadioCatalog.allRadios, key = { it.id }) { radio ->
-                        FilterChip(
-                            selected = selectedRadio.id == radio.id,
-                            onClick = { onSelectRadio(radio) },
-                            label = { Text(radio.model) }
-                        )
+                com.example.ui.components.ChoiceDropdown(
+                    label = "Radio model",
+                    options = RadioCatalog.allRadios.map { it.model },
+                    selected = selectedRadio.model,
+                    onSelect = { model ->
+                        stopBleScanRef()
+                        bleDevices.clear()
+                        selectedBleAddress = ""
+                        onSelectRadio(RadioCatalog.allRadios.first { it.model == model })
                     }
-                }
+                )
 
                 Text(
                     text = selectedRadio.protocolNotes,
@@ -1079,26 +1082,23 @@ private fun HardwareTransferModal(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Text("2. Connection Interface:", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = transport == "Bluetooth LE",
-                        onClick = { transport = "Bluetooth LE" },
-                        leadingIcon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        label = { Text("Bluetooth LE") }
-                    )
-                    FilterChip(
-                        selected = transport == "USB OTG Serial",
-                        onClick = {
+                if (selectedRadio.id == "baofeng_uv32") {
+                    Text("UV-32 test mode supports Bluetooth downloads. Turn on Wireless CPS and close Ola before connecting.")
+                }
+                if (selectedRadio.id != "baofeng_uv32") {
+                    val connections = listOf("Bluetooth", "USB cable")
+                    com.example.ui.components.ChoiceDropdown(
+                        label = "Connection",
+                        options = connections,
+                        selected = if (transport == "Bluetooth LE") connections[0] else connections[1],
+                        onSelect = { connection ->
                             stopBleScanRef()
-                            transport = "USB OTG Serial"
-                            usbCables = programmerManager.scanUsbOtgDevices()
-                            if (selectedUsbDeviceName.isBlank()) {
-                                selectedUsbDeviceName = usbCables.firstOrNull()?.deviceName ?: ""
+                            transport = if (connection == connections[0]) "Bluetooth LE" else "USB OTG Serial"
+                            if (transport == "USB OTG Serial") {
+                                usbCables = programmerManager.scanUsbOtgDevices()
+                                selectedUsbDeviceName = usbCables.firstOrNull()?.deviceName.orEmpty()
                             }
-                        },
-                        leadingIcon = { Icon(Icons.Default.Usb, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        label = { Text("USB OTG Cable") }
+                        }
                     )
                 }
 
@@ -1119,7 +1119,7 @@ private fun HardwareTransferModal(
                                 blePermissionLauncher.launch(perms)
                             }
                         ) {
-                            Text("Scan BLE")
+                            Text("Find radios")
                         }
                     }
                     bleDevices.forEach { d ->
@@ -1237,7 +1237,9 @@ private fun HardwareTransferModal(
                     stopBleScanRef()
                     onExecute(selectedRadio, transport, selectedBleAddress, selectedUsbDeviceName)
                 },
-                enabled = !isFlashing,
+                enabled = !isFlashing &&
+                    (selectedRadio.id != "baofeng_uv32" || (isDownload && transport == "Bluetooth LE")) &&
+                    (if (transport == "Bluetooth LE") selectedBleAddress.isNotBlank() else selectedUsbDeviceName.isNotBlank()),
                 modifier = Modifier.testTag("confirm_hardware_transfer_btn")
             ) {
                 Text(if (isDownload) "Download from Radio" else "Upload to Radio")

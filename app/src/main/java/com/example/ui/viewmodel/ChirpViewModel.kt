@@ -453,7 +453,7 @@ class ChirpViewModel(
                     }
                 )
                 _codeplugChannels.value = downloadedChannels.mapIndexed { idx, ch ->
-                    if (radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                    if (radio.id == "baofeng_uv32" || radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
                 _codeplugTitle.value = "${radio.model} Codeplug"
                 _isCodeplugLoaded.value = true
