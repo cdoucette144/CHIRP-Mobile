@@ -625,7 +625,7 @@ class ChirpViewModel(
         val radio = _selectedRadio.value
         val channels = _codeplugChannels.value
         val settings = _radioSettings.value
-        if (channels.isEmpty()) {
+        if (channels.isEmpty() && radio.id != "radtel_rt950_pro") {
             _statusBanner.value = "Codeplug has no channels to upload. Add a bank or channel first."
             return
         }
@@ -687,7 +687,7 @@ class ChirpViewModel(
                     errorReason = "",
                     lastFailedAction = ""
                 )
-                _statusBanner.value = if (radio.model.contains("UV-5R Mini")) "Upload reconnect check passed. Power-cycle radio, then Download to verify persistence." else if (radio.id == "baofeng_uv32") "UV-32 upload check passed. Power-cycle and download to confirm persistence." else "Uploaded ${channels.size} channels to ${radio.model}."
+                _statusBanner.value = if (radio.id == "radtel_rt950_pro") programmerManager.lastPersistenceMessage else if (radio.model.contains("UV-5R Mini")) "Upload reconnect check passed. Power-cycle radio, then Download to verify persistence." else if (radio.id == "baofeng_uv32") "UV-32 upload check passed. Power-cycle and download to confirm persistence." else "Uploaded ${channels.size} channels to ${radio.model}."
             } catch (e: Exception) {
                 Log.e("ChirpBluetooth", "Upload failed for ${radio.model}", e)
                 val msg = e.localizedMessage ?: "Hardware clone write failed."

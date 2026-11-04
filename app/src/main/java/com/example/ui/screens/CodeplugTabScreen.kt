@@ -1089,15 +1089,18 @@ private fun HardwareTransferModal(
                 if (selectedRadio.id == "baofeng_uv32") {
                     Text("For Bluetooth, turn on Wireless CPS and close Ola. Download from this UV-32 using the same connection before uploading.")
                 }
-                if (selectedRadio.id != "radtel_rt950_pro" || isDownload) {
+                if (selectedRadio.id == "radtel_rt950_pro" && !isDownload) {
+                    Text("RT-950 Pro uploads settings and zone names over USB.")
+                }
+                run {
                     val connections = listOf("Bluetooth", "USB cable")
                     com.example.ui.components.ChoiceDropdown(
                         label = "Connection",
                         options = connections,
-                        selected = if (transport == "Bluetooth LE") connections[0] else connections[1],
+                        selected = if (transport == "Bluetooth LE") "Bluetooth" else "USB cable",
                         onSelect = { connection ->
                             stopBleScanRef()
-                            transport = if (connection == connections[0]) "Bluetooth LE" else "USB OTG Serial"
+                            transport = if (connection == "Bluetooth") "Bluetooth LE" else "USB OTG Serial"
                             if (transport == "USB OTG Serial") {
                                 usbCables = programmerManager.scanUsbOtgDevices()
                                 selectedUsbDeviceName = usbCables.firstOrNull()?.deviceName.orEmpty()
@@ -1244,7 +1247,7 @@ private fun HardwareTransferModal(
                     onExecute(selectedRadio, transport, selectedBleAddress, selectedUsbDeviceName)
                 },
                 enabled = !isFlashing &&
-                    (selectedRadio.id != "radtel_rt950_pro" || isDownload) &&
+                    (selectedRadio.id != "radtel_rt950_pro" || isDownload || transport == "USB OTG Serial") &&
                     (selectedRadio.id != "baofeng_uv5_mini" || isDownload || transport == "Bluetooth LE") &&
                     (if (transport == "Bluetooth LE") selectedBleAddress.isNotBlank() else selectedUsbDeviceName.isNotBlank()),
                 modifier = Modifier.testTag("confirm_hardware_transfer_btn")

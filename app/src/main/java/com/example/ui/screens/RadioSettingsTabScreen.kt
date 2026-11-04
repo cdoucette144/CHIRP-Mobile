@@ -98,10 +98,28 @@ fun RadioSettingsTabScreen(
         if (selectedRadio.id == "radtel_rt950_pro") {
             item {
                 Text("RT-950 Pro settings", style = MaterialTheme.typography.titleMedium)
-                Text(if (settings.rt950Settings.isEmpty()) "Download from the radio to load its settings." else "Downloaded values · read-only")
+                Text(if (settings.rt950Settings.isEmpty()) "Download from the radio to load its settings." else "Download and upload over USB to sync settings and zone names.")
             }
             items(settings.rt950Settings.entries.toList()) { (label, value) ->
-                Text("$label · $value")
+                SettingChipSelectorRow(
+                    label = label,
+                    options = com.example.domain.Rt950ProReader.settingOptions.getValue(label),
+                    selected = value,
+                    onSelect = { onUpdateSettings(settings.copy(rt950Settings = settings.rt950Settings + (label to it))) }
+                )
+            }
+            items(settings.rt950ZoneNames.size) { index ->
+                OutlinedTextField(
+                    value = settings.rt950ZoneNames[index],
+                    onValueChange = { input ->
+                        val names = settings.rt950ZoneNames.toMutableList()
+                        names[index] = input.filter { it in ' '..'~' }.take(16)
+                        onUpdateSettings(settings.copy(rt950ZoneNames = names))
+                    },
+                    label = { Text("Zone ${index + 1} name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             return@LazyColumn
         }

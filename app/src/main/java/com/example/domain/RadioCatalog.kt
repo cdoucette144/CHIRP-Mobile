@@ -59,7 +59,7 @@ object RadioCatalog {
             transport = TransportInterface.BOTH,
             supportsNativeRxOnly = true,
             eepromIdent = "RT-950PRO",
-            protocolNotes = "Bluetooth and USB downloads for firmware 0.24 and later (10 zones)."
+            protocolNotes = "Bluetooth and USB downloads for firmware 0.24 and later. USB upload supports settings and zone names."
         ),
         classSupportedRadioModel(
             id = "baofeng_uv5_mini",

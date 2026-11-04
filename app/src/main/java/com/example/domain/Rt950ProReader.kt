@@ -7,7 +7,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlin.math.abs
 
-/** RT-950 Pro Bluetooth read protocol. Only clone entry, reads and clone exit are supported. */
+/** RT-950 Pro clone protocol for Bluetooth downloads and USB settings transfers. */
 internal object Rt950ProReader {
     val unlockFrame: ByteArray
         get() = byteArrayOf(0x3f, 0x3f, 0x3f, 0x3f, 0x02, 0x2e, 0x17, 0x1d, 0x5e, 0x57,
@@ -21,15 +21,39 @@ internal object Rt950ProReader {
         Region(0x54, 0, 0x80)
     )
 
-    suspend fun download(transport: RadioSerialTransport, progress: (Float, String) -> Unit): ByteArray {
+    fun settingsBlocks(original: ByteArray, desired: ByteArray): Map<Int, ByteArray> =
+        mapOf(0x9000 to 0x7d00, 0xc000 to 0x8500, 0xc080 to 0x8580).mapNotNull { (address, offset) ->
+            val data = desired.copyOfRange(offset, offset + 128)
+            if (data.contentEquals(original.copyOfRange(offset, offset + 128))) null else address to data
+        }.toMap()
+
+    suspend fun download(transport: RadioSerialTransport, progress: (Float, String) -> Unit): ByteArray =
+        transfer(transport, emptyMap(), progress)
+
+    suspend fun writeSettings(
+        transport: RadioSerialTransport,
+        blocks: Map<Int, ByteArray>,
+        progress: (Float, String) -> Unit
+    ) {
+        require(blocks.isNotEmpty() && blocks.all { (address, data) ->
+            address in setOf(0x9000, 0xc000, 0xc080) && data.size == 128
+        })
+        transfer(transport, blocks, progress)
+    }
+
+    private suspend fun transfer(
+        transport: RadioSerialTransport,
+        settingsWrites: Map<Int, ByteArray>,
+        progress: (Float, String) -> Unit
+    ): ByteArray {
         fun ascii(text: String) = text.toByteArray(Charsets.US_ASCII)
-        suspend fun expect(count: Int, label: String): ByteArray {
-            val reply = transport.readBytes(count, 3000)
+        suspend fun expect(count: Int, label: String, timeout: Long = 3000): ByteArray {
+            val reply = transport.readBytes(count, timeout)
             if (reply.size != count) throw IOException("RT-950 Pro $label received ${reply.size}/$count bytes.")
             return reply
         }
-        suspend fun ack(label: String) {
-            val reply = expect(1, label)[0]
+        suspend fun ack(label: String, timeout: Long = 3000) {
+            val reply = expect(1, label, timeout)[0]
             if (reply != 6.toByte()) throw IOException("RT-950 Pro $label rejected (reply %02X).".format(reply))
         }
         transport.clearRxBuffer()
@@ -76,6 +100,21 @@ internal object Rt950ProReader {
             send(init)
             ack("session initialization")
             val key = ascii("CO 7")
+            fun crypt(byte: Byte, index: Int): Int {
+                val value = byte.toInt() and 255
+                val k = key[index % 4].toInt()
+                return if (k != 32 && value != 0 && value != 255 && value != k && value != (k xor 255)) value xor k else value
+            }
+            if (settingsWrites.isNotEmpty()) {
+                for ((address, data) in settingsWrites) {
+                    val header = byteArrayOf(0x57, (address shr 8).toByte(), address.toByte(), 0x80.toByte())
+                    send(header + ByteArray(data.size) { crypt(data[it], it).toByte() })
+                    ack("settings write %04X".format(address), 10_000)
+                    kotlinx.coroutines.delay(50)
+                    progress(0.65f, "[RT-950 PRO WRITE %04X] acknowledged".format(address))
+                }
+                return byteArrayOf()
+            }
             val image = ByteArrayOutputStream()
             val total = regions.sumOf { it.length }
             for ((command, start, length) in regions) {
@@ -87,9 +126,7 @@ internal object Rt950ProReader {
                         throw IOException("Unexpected RT-950 Pro response header at %02X:%04X.".format(command, address))
                     }
                     for (index in 0 until 128) {
-                        val value = reply[index + 4].toInt() and 255
-                        val k = key[index % 4].toInt()
-                        image.write(if (k != 32 && value != 0 && value != 255 && value != k && value != (k xor 255)) value xor k else value)
+                        image.write(crypt(reply[index + 4], index))
                     }
                     progress(0.12f + 0.85f * image.size() / total,
                         "[RT-950 PRO READ %02X:%04X] %d / %d bytes".format(command, address, image.size(), total))
@@ -112,31 +149,71 @@ internal object Rt950ProReader {
             .toString(charset("GB2312")).trim()
     }
 
+    private data class Setting(val offset: Int, val label: String, val options: List<String>)
+
+    private val offOn = listOf("Off", "On")
+    private val levels = (0..9).map(Int::toString)
+    private val displays = listOf("Channel", "Frequency", "Name")
+    private val functionSettings = listOf(
+        Setting(0, "Squelch", levels),
+        Setting(1, "Battery Save", (0..3).map(Int::toString)),
+        Setting(2, "VOX Gain", levels),
+        Setting(3, "Auto Backlight", levels),
+        Setting(4, "Dual Watch", offOn),
+        Setting(5, "Transmit Timeout", levels),
+        Setting(6, "Key Beep", offOn),
+        Setting(7, "Voice Prompt", listOf("Off", "English", "Chinese")),
+        Setting(8, "Menu Language", listOf("English", "Chinese", "Other")),
+        Setting(9, "DTMF Mode", listOf("Off", "DT-ST", "ANI-ID", "DTMF")),
+        Setting(10, "Scan Resume", listOf("Time", "Carrier", "Search")),
+        Setting(11, "PTT ID", listOf("Off", "Start", "End", "Both")),
+        Setting(13, "Display A", displays),
+        Setting(14, "Display B", displays),
+        Setting(15, "Display C", displays),
+        Setting(16, "Auto Key Lock", offOn),
+        Setting(17, "Alarm Mode", listOf("Local", "Remote", "Tone")),
+        Setting(18, "Alarm Sound", listOf("Off", "Type 1", "Type 2")),
+        Setting(20, "Tail Noise Clear", offOn),
+        Setting(23, "Roger Beep", offOn),
+        Setting(25, "FM Radio", offOn),
+        Setting(27, "Keypad Lock", offOn),
+        Setting(28, "Power-on Display", listOf("Full", "Message", "Voltage")),
+        Setting(32, "VOX Delay", levels),
+        Setting(0x26, "Channel Divide", listOf("Zones", "All Channels")),
+        Setting(0x28, "VOX Switch", offOn)
+    )
+
+    val settingOptions: Map<String, List<String>> = functionSettings.associate { it.label to it.options }
+
     fun settings(image: ByteArray): Map<String, String> = buildMap {
-        fun show(offset: Int, label: String, options: List<String> = emptyList()) {
-            val value = image[0x7d00 + offset].toInt() and 255
-            if (value != 255) put(label, options.getOrNull(value) ?: value.toString())
+        for ((offset, label, options) in functionSettings) {
+            val raw = image[0x7d00 + offset].toInt() and 255
+            if (raw != 255) options.getOrNull(raw and 15)?.let { put(label, it) }
         }
-        val offOn = listOf("Off", "On")
-        val displays = listOf("Channel", "Frequency", "Name")
-        show(0, "Squelch")
-        show(1, "Battery Save")
-        show(2, "VOX Gain")
-        show(3, "Auto Backlight")
-        show(4, "Dual Watch", offOn)
-        show(5, "Transmit Timeout")
-        show(6, "Key Beep", offOn)
-        show(7, "Voice Prompt", listOf("Off", "English", "Chinese"))
-        show(8, "Menu Language", listOf("English", "Chinese", "Other"))
-        show(9, "DTMF Mode", listOf("Off", "DT-ST", "ANI-ID", "DTMF"))
-        show(10, "Scan Resume", listOf("Time", "Carrier", "Search"))
-        show(11, "PTT ID", listOf("Off", "Start", "End", "Both"))
-        show(13, "Display A", displays)
-        show(14, "Display B", displays)
-        show(15, "Display C", displays)
-        show(16, "Auto Key Lock", offOn)
-        show(0x26, "Channel Divide", listOf("Zones", "All Channels"))
-        show(0x28, "VOX Switch", offOn)
+    }
+
+    fun patchSettings(image: ByteArray, values: Map<String, String>, names: List<String>): ByteArray {
+        val original = settings(image)
+        require(values.keys == original.keys) { "Download the RT-950 Pro settings again before uploading." }
+        val result = image.copyOf()
+        for ((offset, label, options) in functionSettings) {
+            val value = values[label] ?: continue
+            if (original[label] == value) continue
+            val index = options.indexOf(value)
+            require(index >= 0) { "Invalid RT-950 Pro setting: $label." }
+            val address = 0x7d00 + offset
+            result[address] = ((result[address].toInt() and 0xf0) or index).toByte()
+        }
+        val originalNames = zoneNames(image)
+        require(names.size == originalNames.size)
+        names.forEachIndexed { index, name ->
+            if (name == originalNames[index]) return@forEachIndexed
+            require(name.length <= 16 && name.all { it in ' '..'~' }) { "Zone names allow up to 16 printable ASCII characters." }
+            val offset = 0x8500 + index * 16
+            result.fill(0xff.toByte(), offset, offset + 16)
+            name.toByteArray(Charsets.US_ASCII).copyInto(result, offset)
+        }
+        return result
     }
 
     fun decodeChannels(image: ByteArray): List<RadioChannel> = (0 until 990).mapNotNull { index ->

@@ -119,6 +119,7 @@ class HardwareProgrammerManager(private val context: Context) {
     private var lastMiniImage: ByteArray? = null
     private var lastUv32Image: ByteArray? = null
     private var lastUv32Extras: ByteArray? = null
+    private var rt950Baseline: Triple<String, ByteArray, List<RadioChannel>>? = null
     var lastRt950ZoneNames: List<String> = emptyList()
         private set
     var lastRt950Settings: Map<String, String> = emptyMap()
@@ -910,6 +911,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 lastRt950ZoneNames = Rt950ProReader.zoneNames(image)
                 lastRt950Settings = Rt950ProReader.settings(image)
                 val channels = Rt950ProReader.decodeChannels(image)
+                rt950Baseline = if (transportMode == "USB OTG Serial") Triple(usbDeviceName, image, channels) else null
                 lastPersistenceMessage = "RT-950 Pro: downloaded ${channels.size} channels and saved ${file.name}."
                 onProgress(1f, checkNotNull(lastPersistenceMessage))
                 return@withContext channels
@@ -1029,7 +1031,11 @@ class HardwareProgrammerManager(private val context: Context) {
         settings: com.example.data.model.RadioSettingsState,
         onProgress: (Float, String) -> Unit
     ) = withContext(Dispatchers.IO) {
-        require(radio.id != "radtel_rt950_pro") { "RT-950 Pro currently supports download only." }
+        if (radio.id == "radtel_rt950_pro") {
+            require(transportMode == "USB OTG Serial") { "Use the USB cable to upload RT-950 Pro settings." }
+            uploadRt950Settings(usbDeviceName, channels, settings, onProgress)
+            return@withContext
+        }
         require(radio.id != "baofeng_uv5_mini" || transportMode == "Bluetooth LE") { "Mini cable support is download-only for now." }
         if (radio.id == "baofeng_uv32") {
             val bluetooth = transportMode == "Bluetooth LE"
@@ -1159,6 +1165,50 @@ class HardwareProgrammerManager(private val context: Context) {
     /** Mini protocol reference: CHIRP baofeng_uv17Pro.py, UV5RMini.
      * Read-only: preserve the complete decrypted image before decoding channels.
      */
+    private suspend fun uploadRt950Settings(
+        cable: String,
+        channels: List<RadioChannel>,
+        settings: com.example.data.model.RadioSettingsState,
+        progress: (Float, String) -> Unit
+    ) {
+        val baseline = requireNotNull(rt950Baseline) { "Download from the RT-950 Pro over USB before uploading settings." }
+        require(cable == baseline.first) { "Download from the RT-950 Pro using this cable before uploading." }
+        require(channels == baseline.third) { "RT-950 Pro uploads currently support settings and zone names. Download again to clear channel edits." }
+        suspend fun capture(start: Float): ByteArray {
+            val transport = openUsbOtgTransport(cable, 115200) { progress(start, it) }
+            return try {
+                Rt950ProReader.download(transport) { pct, message -> progress(start + pct * 0.3f, message) }.also { image ->
+                    val backups = java.io.File(context.filesDir, "rt950pro-backups").apply { mkdirs() }
+                    java.io.File(backups, "rt950pro-${System.currentTimeMillis()}.bin").writeBytes(image)
+                }
+            } finally {
+                transport.close()
+            }
+        }
+        val original = capture(0.02f)
+        require(original.contentEquals(baseline.second)) { "RT-950 Pro memory changed since download. Download again before uploading." }
+        val desired = Rt950ProReader.patchSettings(original, settings.rt950Settings, settings.rt950ZoneNames)
+        val blocks = Rt950ProReader.settingsBlocks(original, desired)
+        if (blocks.isEmpty()) {
+            lastPersistenceMessage = "No RT-950 Pro settings changes to upload."
+            progress(1f, checkNotNull(lastPersistenceMessage))
+            return
+        }
+        rt950Baseline = null
+        val transport = openUsbOtgTransport(cable, 115200) { progress(0.34f, it) }
+        try {
+            Rt950ProReader.writeSettings(transport, blocks) { pct, message -> progress(maxOf(0.34f, pct), message) }
+        } finally {
+            transport.close()
+        }
+        kotlinx.coroutines.delay(1000)
+        val verified = capture(0.68f)
+        if (!verified.contentEquals(desired)) throw IOException("RT-950 Pro settings read-back differs from the upload. Backups retained.")
+        rt950Baseline = Triple(cable, verified, channels)
+        lastPersistenceMessage = "RT-950 Pro settings and zone names verified after upload."
+        progress(1f, checkNotNull(lastPersistenceMessage))
+    }
+
     private suspend fun reconnectUv32(address: String, onLog: (String) -> Unit): RadioSerialTransport {
         repeat(2) {
             try {
