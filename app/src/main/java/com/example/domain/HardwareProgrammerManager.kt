@@ -895,7 +895,9 @@ class HardwareProgrammerManager(private val context: Context) {
         val uv32 = radio.id == "baofeng_uv32"
         val rt950Pro = radio.id == "radtel_rt950_pro"
         lastPersistenceMessage = null
-        val baud = if (rt950Pro || uv32 || radio.id == "baofeng_uv5_mini") 115200 else 9600
+        val uv17Family = radio.id == "baofeng_uv17_pro_gps"
+        require(!uv17Family || transportMode == "USB OTG Serial") { "Use USB cable for the UV-17/UV-21 family download." }
+        val baud = if (rt950Pro || uv32 || uv17Family || radio.id == "baofeng_uv5_mini") 115200 else 9600
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress, configureUv32Baud = uv32, unlockRt950Pro = rt950Pro) { line -> onProgress(0.08f, line) }
@@ -904,6 +906,12 @@ class HardwareProgrammerManager(private val context: Context) {
         }
 
         try {
+            if (uv17Family) {
+                initializeUv17Family(transport, onProgress)
+                val channels = readColorClone(transport, onProgress, initialize = false, uv32 = true, familyLabel = "UV-17/UV-21")
+                MiniSessionExit.finish(transport, reconnectWaitMs = 0)
+                return@withContext channels
+            }
             if (rt950Pro) {
                 val image = Rt950ProReader.download(transport, onProgress)
                 val backups = java.io.File(context.filesDir, "rt950pro-backups").apply { mkdirs() }
@@ -1037,6 +1045,7 @@ class HardwareProgrammerManager(private val context: Context) {
             uploadRt950Settings(usbDeviceName, channels, settings, onProgress)
             return@withContext
         }
+        require(radio.id != "baofeng_uv17_pro_gps") { "UV-17/UV-21 family support is currently USB download only." }
         val miniWired = radio.id == "baofeng_uv5_mini" && transportMode == "USB OTG Serial"
         if (radio.id == "baofeng_uv32") {
             val bluetooth = transportMode == "Bluetooth LE"
@@ -1384,8 +1393,27 @@ class HardwareProgrammerManager(private val context: Context) {
         if (exchangeColorClone(transport, model, init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("$model session initialization rejected.")
     }
 
-    private suspend fun readColorClone(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true, uv32: Boolean = false, includeUv32Extras: Boolean = false): List<RadioChannel> {
-        val model = if (uv32) "UV-32" else "Mini"
+    private suspend fun initializeUv17Family(transport: RadioSerialTransport, progress: (Float, String) -> Unit) {
+        val profiles = listOf("PROGRAMCOLORPROU" to 7, "PROGRAMBFNORMALU" to 15)
+        for ((magic, modelLength) in profiles) {
+            transport.clearRxBuffer()
+            transport.writeBytes(magic.toByteArray(Charsets.US_ASCII))
+            if (transport.readBytes(1, 1200).firstOrNull() != 6.toByte()) continue
+            val model = "UV-17/UV-21"
+            exchangeColorClone(transport, model, byteArrayOf(0x46), 16, "firmware identification")
+            val ident = exchangeColorClone(transport, model, byteArrayOf(0x4d), modelLength, "model identification")
+            progress(0.10f, "[$model IDENT] " + ident.joinToString(" ") { "%02X".format(it) })
+            val init = byteArrayOf(0x53,0x45,0x4e,0x44,0x21,0x05,0x0d,0x01,0x01,0x01,0x04,0x11,0x08,0x05,0x0d,0x0d,0x01,0x11,0x0f,0x09,0x12,0x09,0x10,0x04,0x00)
+            if (exchangeColorClone(transport, model, init, 1, "session initialization")[0] != 6.toByte()) {
+                throw IOException("$model session initialization rejected.")
+            }
+            return
+        }
+        throw IOException("No UV-17/UV-21 family acknowledgment at 115200 baud.")
+    }
+
+    private suspend fun readColorClone(transport: RadioSerialTransport, onProgress: (Float, String) -> Unit, initialize: Boolean = true, uv32: Boolean = false, includeUv32Extras: Boolean = false, familyLabel: String? = null): List<RadioChannel> {
+        val model = familyLabel ?: if (uv32) "UV-32" else "Mini"
         if (initialize) initializeColorClone(transport, uv32, onProgress)
         val image = ByteArrayOutputStream()
         val key = byteArrayOf(0x43,0x4f,0x20,0x37)
@@ -1410,13 +1438,13 @@ class HardwareProgrammerManager(private val context: Context) {
         }
         val captured = image.toByteArray()
         val bytes = if (includeUv32Extras) captured.copyOf(0x8380) else captured
-        if (uv32) {
+        if (uv32 && familyLabel == null) {
             lastUv32Image = bytes
             lastUv32Extras = if (includeUv32Extras) captured.copyOfRange(0x8380, captured.size) else null
             lastUv32Settings = com.example.data.model.Uv32SettingsSnapshot.fromImage(bytes)
-        } else lastMiniImage = bytes.copyOf()
-        val backup = java.io.File(context.filesDir, if (uv32) "uv32-backups" else "mini-backups").apply { mkdirs() }
-        val file = java.io.File(backup, "${if (uv32) "uv32" else "uv5r-mini"}-${System.currentTimeMillis()}.bin")
+        } else if (!uv32) lastMiniImage = bytes.copyOf()
+        val backup = java.io.File(context.filesDir, if (familyLabel != null) "uv17-family-backups" else if (uv32) "uv32-backups" else "mini-backups").apply { mkdirs() }
+        val file = java.io.File(backup, "${if (familyLabel != null) "uv17-family" else if (uv32) "uv32" else "uv5r-mini"}-${System.currentTimeMillis()}.bin")
         file.writeBytes(bytes)
         if (includeUv32Extras) java.io.File(backup, file.nameWithoutExtension + "-extra.bin").writeBytes(checkNotNull(lastUv32Extras))
         val invalidSlots = mutableListOf<Int>()
@@ -1464,7 +1492,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 pttId=(bytes[offset+13].toInt() and 255).takeIf { it in 0..3 })
         }
         if (uv32) {
-            lastPersistenceMessage = "UV-32: downloaded ${channels.size} channels and saved a raw backup." +
+            lastPersistenceMessage = "$model: downloaded ${channels.size} channels and saved a raw backup." +
                 if (invalidSlots.isEmpty()) "" else " Skipped invalid frequency slots: ${invalidSlots.joinToString()}."
         }
         onProgress(1f,"[$model COMPLETE] ${channels.size} channels; backup ${file.name}.")
