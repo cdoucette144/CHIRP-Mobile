@@ -1089,7 +1089,7 @@ private fun HardwareTransferModal(
                 if (selectedRadio.id == "baofeng_uv32") {
                     Text("For Bluetooth, turn on Wireless CPS and close Ola. Download from this UV-32 using the same connection before uploading.")
                 }
-                if (selectedRadio.id != "radtel_rt950_pro") {
+                if (selectedRadio.id != "radtel_rt950_pro" || isDownload) {
                     val connections = listOf("Bluetooth", "USB cable")
                     com.example.ui.components.ChoiceDropdown(
                         label = "Connection",
@@ -1244,7 +1244,7 @@ private fun HardwareTransferModal(
                     onExecute(selectedRadio, transport, selectedBleAddress, selectedUsbDeviceName)
                 },
                 enabled = !isFlashing &&
-                    (selectedRadio.id != "radtel_rt950_pro" || (isDownload && transport == "Bluetooth LE")) &&
+                    (selectedRadio.id != "radtel_rt950_pro" || isDownload) &&
                     (selectedRadio.id != "baofeng_uv5_mini" || isDownload || transport == "Bluetooth LE") &&
                     (if (transport == "Bluetooth LE") selectedBleAddress.isNotBlank() else selectedUsbDeviceName.isNotBlank()),
                 modifier = Modifier.testTag("confirm_hardware_transfer_btn")

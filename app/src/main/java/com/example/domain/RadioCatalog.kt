@@ -54,12 +54,12 @@ object RadioCatalog {
             vendor = "Radtel",
             model = "RT-950 Pro",
             maxChannels = 990,
-            bandsSummary = "Multiband analog · Bluetooth download",
+            bandsSummary = "Multiband analog · Bluetooth or USB download",
             supportedBandsMhz = listOf(18.0..64.0, 70.0..580.0),
-            transport = TransportInterface.BLUETOOTH_LE,
+            transport = TransportInterface.BOTH,
             supportsNativeRxOnly = true,
             eepromIdent = "RT-950PRO",
-            protocolNotes = "Read-only Bluetooth support for firmware 0.24 and later (10 zones). Enable Bluetooth on the radio before downloading."
+            protocolNotes = "Bluetooth and USB downloads for firmware 0.24 and later (10 zones)."
         ),
         classSupportedRadioModel(
             id = "baofeng_uv5_mini",

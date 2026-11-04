@@ -707,8 +707,18 @@ class HardwareProgrammerManager(private val context: Context) {
                     connection.controlTransfer(0x21, 0x22, 3, control.id, null, 0, 500) < 0) {
                     throw IOException("CH343 serial setup failed.")
                 }
+            } else if (device.vendorId == 0x067b && device.productId == 0x23a3) {
+                val lineCoding = ByteBuffer.allocate(7).order(ByteOrder.LITTLE_ENDIAN)
+                    .putInt(baud).put(0).put(0).put(8).array()
+                // PL2303 HXN: disable hardware flow control and reset both serial queues.
+                if (connection.controlTransfer(0x40, 0x80, 0x0a, 0xff, null, 0, 500) < 0 ||
+                    connection.controlTransfer(0x21, 0x20, 0, claimedInterface.id, lineCoding, lineCoding.size, 500) != lineCoding.size ||
+                    connection.controlTransfer(0x21, 0x22, 3, claimedInterface.id, null, 0, 500) < 0 ||
+                    connection.controlTransfer(0x40, 0x80, 0x07, 3, null, 0, 500) < 0) {
+                    throw IOException("Prolific PL2303 serial setup failed.")
+                }
             } else if (baud == 115200) {
-                require(device.vendorId == 0x0403) { "Select an FTDI or CH343 cable for 115200 baud programming." }
+                require(device.vendorId == 0x0403) { "Select a supported FTDI, CH343, or Prolific cable for 115200 baud programming." }
                 for ((request, value) in listOf(0 to 0, 3 to 26, 4 to 8)) {
                     if (connection.controlTransfer(0x40, request, value, 0, null, 0, 500) < 0) {
                         throw IOException("FTDI serial setup failed (request $request).")
@@ -878,8 +888,7 @@ class HardwareProgrammerManager(private val context: Context) {
         val uv32 = radio.id == "baofeng_uv32"
         val rt950Pro = radio.id == "radtel_rt950_pro"
         lastPersistenceMessage = null
-        if (rt950Pro && transportMode != "Bluetooth LE") throw IOException("Select Bluetooth for the RT-950 Pro download.")
-        val baud = if (uv32 || radio.id == "baofeng_uv5_mini") 115200 else 9600
+        val baud = if (rt950Pro || uv32 || radio.id == "baofeng_uv5_mini") 115200 else 9600
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress, configureUv32Baud = uv32, unlockRt950Pro = rt950Pro) { line -> onProgress(0.08f, line) }
