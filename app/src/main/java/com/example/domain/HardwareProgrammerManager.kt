@@ -480,19 +480,17 @@ class HardwareProgrammerManager(private val context: Context) {
         object : RadioSerialTransport {
             @SuppressLint("MissingPermission")
             override suspend fun writeBytes(data: ByteArray) {
-                // UV-32 clone writes are sent as one complete command.
+                // Ola fragments UV-32 writes at the negotiated MTU minus seven.
                 val uv32Block = configureUv32Baud && data.size == 68 && data[0] == 0x57.toByte()
-                if (uv32Block && mtu - 3 < data.size) {
-                    throw IOException("UV-32 Bluetooth link could not fit a full write frame (MTU $mtu).")
-                }
-                val chunkSize = if (uv32Block) data.size else 20
+                val chunkSize = if (uv32Block) (mtu - 7).coerceAtLeast(16) else 20
                 var offset = 0
                 while (offset < data.size) {
                     val end = (offset + chunkSize).coerceAtMost(data.size)
                     val chunk = data.copyOfRange(offset, end)
                     writeAckSignal.clear()
                     val useNoResponse =
-                        (finalWriteChar.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
+                        (finalWriteChar.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
+                            (!uv32Block || (finalWriteChar.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0)
                     @Suppress("DEPRECATION")
                     finalWriteChar.writeType = if (useNoResponse) {
                         BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
