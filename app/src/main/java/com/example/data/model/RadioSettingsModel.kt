@@ -122,7 +122,21 @@ enum class MiniMenuSetting(val offset: Int, val label: String, val options: List
     BACKLIGHT(0x8043, "Backlight Timer", listOf("Always On") + (5..20 step 5).map { "$it seconds" }),
     TIMEOUT(0x8045, "Transmit Timeout", listOf("Off") + (15..180 step 15).map { "$it seconds" }),
     BEEP(0x8046, "Keypad Beep", listOf("Off", "On")),
-    SCAN(0x804a, "Scan Resume", listOf("Time", "Carrier", "Search"));
+    SCAN(0x804a, "Scan Resume", listOf("Time", "Carrier", "Search")),
+    BATTERY_SAVE(0x8041, "Battery Save", listOf("Off", "On")),
+    VOX(0x8042, "VOX Sensitivity", listOf("Off") + (1..9).map(Int::toString)),
+    DUAL_WATCH(0x8044, "Dual Watch", listOf("Off", "On")),
+    VOICE_PROMPTS(0x8047, "Voice Prompts", listOf("Off", "On")),
+    VOICE_LANGUAGE(0x8048, "Voice Language", listOf("English", "Chinese")),
+    DTMF_SIDETONE(0x8049, "DTMF Sidetone", listOf("Off", "Keypad", "ANI", "Keypad + ANI")),
+    DISPLAY_A(0x804d, "Channel A Display", listOf("Name", "Frequency", "Channel Number")),
+    DISPLAY_B(0x804e, "Channel B Display", listOf("Name", "Frequency", "Channel Number")),
+    AUTO_LOCK(0x8050, "Keypad Auto Lock", listOf("Off", "On")),
+    TAIL_CLEAR(0x8054, "Squelch Tail Elimination", listOf("Off", "On")),
+    ROGER_BEEP(0x8057, "Roger Beep", listOf("Off", "On")),
+    POWER_ON(0x805c, "Power-on Display", listOf("Logo", "Battery Voltage")),
+    MENU_TIMEOUT(0x8061, "Menu Timeout", ((5..50 step 5).toList() + 60).map { "$it seconds" }),
+    SIDE_KEY_2(0x8074, "Side Key 2 Short Press", listOf("FM Radio", "Scan", "Search", "VOX", "Flashlight", "SOS"));
 
     companion object {
         fun read(image: ByteArray): Map<MiniMenuSetting, Int> = buildMap {
