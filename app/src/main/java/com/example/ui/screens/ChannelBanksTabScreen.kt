@@ -20,9 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.ui.input.pointer.pointerInput
+import com.example.ui.components.RadioListDrag
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -194,6 +192,7 @@ fun ChannelBanksTabScreen(
 
         else -> {
             val bankListState = rememberLazyListState()
+            val bankDrag = remember(bankListState) { RadioListDrag(bankListState) }
             LazyColumn(
                 state = bankListState,
                 modifier = Modifier
@@ -297,6 +296,8 @@ fun ChannelBanksTabScreen(
 
                         Card(
                             modifier = Modifier
+                                .animateItem()
+                                .then(bankDrag.row(index + 1, MaterialTheme.colorScheme.primary))
                                 .fillMaxWidth()
                                 .clickable {
                                     selectedBankIdInList = if (isSelected) null else bank.id
@@ -326,7 +327,7 @@ fun ChannelBanksTabScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    BankReorderHandle(bankListState, index + 1, 1, savedBanks.size, "Reorder ${bank.name}") {
+                                    BankReorderHandle(bankDrag, index + 1, 1..savedBanks.size, "Reorder ${bank.name}") {
                                         onMoveBank(bank.id, it - 1)
                                     }
                                     Column(modifier = Modifier.weight(1f)) {
@@ -570,6 +571,7 @@ private fun ChannelBankEditorView(
             }
         } else {
             val channelListState = rememberLazyListState()
+            val channelDrag = remember(channelListState) { RadioListDrag(channelListState) }
             LazyColumn(
                 state = channelListState,
                 modifier = Modifier
@@ -577,9 +579,11 @@ private fun ChannelBankEditorView(
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                itemsIndexed(channels) { index, ch ->
+                itemsIndexed(channels, key = { _, channel -> channel.number }) { index, ch ->
                     Surface(
                         modifier = Modifier
+                            .animateItem()
+                            .then(channelDrag.row(index, MaterialTheme.colorScheme.primary))
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onOpenEditChannel(index) },
@@ -593,7 +597,7 @@ private fun ChannelBankEditorView(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            BankReorderHandle(channelListState, index, 0, channels.lastIndex, "Reorder ${ch.name}") {
+                            BankReorderHandle(channelDrag, index, channels.indices, "Reorder ${ch.name}") {
                                 onMoveDraftChannel(index, it)
                             }
                             Column(modifier = Modifier.weight(1f)) {
@@ -625,10 +629,9 @@ private fun ChannelBankEditorView(
 
 @Composable
 private fun BankReorderHandle(
-    listState: LazyListState,
+    drag: RadioListDrag,
     index: Int,
-    firstIndex: Int,
-    lastIndex: Int,
+    range: IntRange,
     description: String,
     onMove: (Int) -> Unit
 ) {
@@ -636,26 +639,7 @@ private fun BankReorderHandle(
     Icon(
         Icons.Default.DragHandle,
         contentDescription = description,
-        modifier = Modifier.size(40.dp).pointerInput(listState, index, firstIndex, lastIndex) {
-            var distance = 0f
-            detectDragGesturesAfterLongPress(
-                onDragStart = { distance = 0f },
-                onDrag = { change, amount ->
-                    change.consume()
-                    distance += amount.y
-                },
-                onDragEnd = {
-                    val visible = listState.layoutInfo.visibleItemsInfo
-                    val source = visible.firstOrNull { it.index == index }
-                    if (source != null) {
-                        val targetY = source.offset + source.size / 2f + distance
-                        val target = visible.filter { it.index in firstIndex..lastIndex }
-                            .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - targetY) }
-                        if (target != null && target.index != index) move.value(target.index)
-                    }
-                }
-            )
-        }.padding(8.dp)
+        modifier = Modifier.size(40.dp).then(drag.handle(index, range) { move.value }).padding(8.dp)
     )
 }
 

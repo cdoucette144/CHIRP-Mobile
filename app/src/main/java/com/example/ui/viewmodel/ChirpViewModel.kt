@@ -353,9 +353,14 @@ class ChirpViewModel(
         val bankChannels = bank.parsedChannels().map { ch ->
             normalizeChannelForRadio(ch, ch.rxOnly, radio)
         }
-        val combined = (currentList + bankChannels)
-            .take(radio.maxChannels)
-            .mapIndexed { idx, ch -> ch.copy(number = idx + 1) }
+        val combined = if (radio.id == "baofeng_uv32") {
+            val used = currentList.map { it.number }.toSet()
+            val free = (1..radio.maxChannels).filterNot { it in used }
+            (currentList + bankChannels.zip(free) { channel, slot -> channel.copy(number = slot) }).sortedBy { it.number }
+        } else {
+            (currentList + bankChannels).take(radio.maxChannels)
+                .mapIndexed { index, channel -> channel.copy(number = index + 1) }
+        }
 
         _codeplugChannels.value = combined
         if (!_isCodeplugLoaded.value) {
@@ -369,6 +374,7 @@ class ChirpViewModel(
     // --- TAB 2: CURRENT CODEPLUG OPERATIONS ---
 
     fun selectRadioModelForCodeplug(radio: classSupportedRadioModel) {
+        if (_selectedRadio.value.id == radio.id) return
         _selectedRadio.value = radio
         // Re-evaluate RxOnly channels in current codeplug for the new radio's capabilities
         if (_codeplugChannels.value.isNotEmpty()) {
@@ -421,15 +427,21 @@ class ChirpViewModel(
     fun moveCodeplugChannel(fromIndex: Int, toIndex: Int) {
         val current = _codeplugChannels.value.toMutableList()
         if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return
+        val slots = current.map { it.number }
         val item = current.removeAt(fromIndex)
         current.add(toIndex, item)
-        _codeplugChannels.value = current.mapIndexed { idx, ch -> ch.copy(number = idx + 1) }
+        val zoned = _selectedRadio.value.id == "baofeng_uv32"
+        _codeplugChannels.value = current.mapIndexed { index, channel ->
+            channel.copy(number = if (zoned) slots[index] else index + 1)
+        }
     }
 
     fun updateOrAddCodeplugChannel(edited: RadioChannel, isNew: Boolean) {
         val current = _codeplugChannels.value.toMutableList()
+        val zoned = _selectedRadio.value.id == "baofeng_uv32"
         if (isNew) {
-            current.add(edited.copy(number = current.size + 1))
+            if (zoned && (edited.number !in 1..1000 || current.any { it.number == edited.number })) return
+            current.add(if (zoned) edited else edited.copy(number = current.size + 1))
         } else {
             val idx = current.indexOfFirst { it.number == edited.number }
             if (idx >= 0) {
@@ -438,12 +450,15 @@ class ChirpViewModel(
                 current.add(edited)
             }
         }
-        _codeplugChannels.value = current.mapIndexed { idx, ch -> ch.copy(number = idx + 1) }
+        _codeplugChannels.value = if (zoned) current.sortedBy { it.number }
+            else current.mapIndexed { idx, ch -> ch.copy(number = idx + 1) }
         _isCodeplugLoaded.value = true
     }
 
     fun deleteCodeplugChannels(numbers: Set<Int>) {
-        _codeplugChannels.value = com.example.domain.ChannelBatchEdit.delete(_codeplugChannels.value,numbers)
+        _codeplugChannels.value = if (_selectedRadio.value.id == "baofeng_uv32") {
+            _codeplugChannels.value.filterNot { it.number in numbers }
+        } else com.example.domain.ChannelBatchEdit.delete(_codeplugChannels.value, numbers)
     }
 
     fun editCodeplugChannels(numbers: Set<Int>, mode: String?, power: PowerLevel?) {
@@ -451,10 +466,7 @@ class ChirpViewModel(
     }
 
     fun deleteCodeplugChannel(channelNumber: Int) {
-        val remaining = _codeplugChannels.value
-            .filterNot { it.number == channelNumber }
-            .mapIndexed { idx, ch -> ch.copy(number = idx + 1) }
-        _codeplugChannels.value = remaining
+        deleteCodeplugChannels(setOf(channelNumber))
     }
 
     fun downloadFromRadioIntoCodeplug(
@@ -509,7 +521,7 @@ class ChirpViewModel(
                 _codeplugTitle.value = "${radio.model} Codeplug"
                 _isCodeplugLoaded.value = true
                 _hardwareConnectivity.value = HardwareConnectivityState(
-                    status = HardwareConnectionStatus.CONNECTED,
+                    status = HardwareConnectionStatus.DISCONNECTED,
                     transport = transportMode,
                     deviceLabel = "${radio.model} ($targetLabel)",
                     errorReason = "",
@@ -583,7 +595,7 @@ class ChirpViewModel(
                     }
                 )
                 _hardwareConnectivity.value = HardwareConnectivityState(
-                    status = HardwareConnectionStatus.CONNECTED,
+                    status = HardwareConnectionStatus.DISCONNECTED,
                     transport = transportMode,
                     deviceLabel = "${radio.model} ($targetLabel)",
                     errorReason = "",

@@ -7,7 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,7 +64,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,15 +71,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import com.example.data.model.DuplexMode
 import com.example.data.model.PowerLevel
 import com.example.data.model.RadioChannel
@@ -97,12 +92,13 @@ import com.example.ui.theme.CyanRepeaterSecondary
 import com.example.ui.theme.FrsFallbackYellow
 import com.example.ui.theme.RxSafeGreen
 import com.example.ui.viewmodel.LocalSavedCodeplugSummary
-import com.example.ui.components.ConnectivityStatusBadge
+import com.example.ui.components.RadioListDrag
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import com.example.ui.components.RadioBrandModelDropdowns
-import com.example.ui.viewmodel.HardwareConnectivityState
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 @Composable
 fun CodeplugTabScreen(
@@ -111,7 +107,8 @@ fun CodeplugTabScreen(
     channels: List<RadioChannel>,
     selectedRadio: classSupportedRadioModel,
     cloudSavedCodeplugs: List<ZoneDocument>,
-    connectivityState: HardwareConnectivityState,
+    showRadioControls: Boolean,
+    zoneNames: List<String>,
     isFlashing: Boolean,
     flashProgress: Float,
     flashLogs: List<String>,
@@ -124,8 +121,6 @@ fun CodeplugTabScreen(
     onEditChannels: (Set<Int>, String?, PowerLevel?) -> Unit,
     onDownloadFromRadio: (HardwareProgrammerManager, classSupportedRadioModel, String, String, String) -> Unit,
     onUploadToRadio: (HardwareProgrammerManager, String, String, String) -> Unit,
-    onRetryConnection: () -> Unit,
-    onDisconnectHardware: () -> Unit,
     onSaveLocal: (String) -> Unit,
     onListLocalCodeplugs: () -> List<LocalSavedCodeplugSummary>,
     onOpenLocalCodeplug: (LocalSavedCodeplugSummary) -> Unit,
@@ -144,7 +139,21 @@ fun CodeplugTabScreen(
     var editingChannel by remember { mutableStateOf<RadioChannel?>(null) }
     var isAddingNewChannel by remember { mutableStateOf(false) }
 
-    var selectedNumbers by remember(channels) { mutableStateOf(emptySet<Int>()) }
+    val supportsZones = selectedRadio.id == "baofeng_uv32"
+    var selectedZone by remember(selectedRadio.id, codeplugTitle) { mutableStateOf(0) }
+    var showZones by remember { mutableStateOf(false) }
+    val visibleChannels = if (!supportsZones || selectedZone == 0) channels else channels.filter {
+        it.number in ((selectedZone - 1) * 100 + 1)..(selectedZone * 100)
+    }
+    var selectedNumbers by remember(channels, selectedZone) { mutableStateOf(emptySet<Int>()) }
+    val channelListState = rememberLazyListState()
+    val channelDrag = remember(channelListState) { RadioListDrag(channelListState) }
+    androidx.compose.runtime.LaunchedEffect(selectedZone) { channelListState.scrollToItem(0) }
+    fun moveVisibleChannel(from: Int, to: Int) {
+        val source = channels.indexOfFirst { it.number == visibleChannels[from].number }
+        val target = channels.indexOfFirst { it.number == visibleChannels[to].number }
+        onMoveChannel(source, target)
+    }
     var showDeleteSelection by remember { mutableStateOf(false) }
     var showEditSelection by remember { mutableStateOf(false) }
     if(showDeleteSelection) {
@@ -171,12 +180,6 @@ fun CodeplugTabScreen(
             dismissButton={TextButton(onClick={showEditSelection=false}){Text("Cancel")}})
     }
 
-    val hasCodeplug = isCodeplugLoaded || channels.isNotEmpty()
-    var showRadioControls by remember(hasCodeplug) { mutableStateOf(!hasCodeplug) }
-
-    // Drag-and-drop state
-    var draggedIndex by remember { mutableStateOf<Int?>(null) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
 
     Column(
         modifier = Modifier
@@ -195,21 +198,6 @@ fun CodeplugTabScreen(
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Live Hardware Connectivity Indicator Badge + Retry
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ConnectivityStatusBadge(
-                            state = connectivityState,
-                            onRetry = onRetryConnection,
-                            onDisconnect = onDisconnectHardware,
-                            onTapBadge = { showDownloadRadioDialog = true },
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                    }
-
                     // Brand ➔ Model Dropdown Hierarchy Selector
                     RadioBrandModelDropdowns(
                         selectedRadio = selectedRadio,
@@ -376,7 +364,11 @@ fun CodeplugTabScreen(
                         onClick = {
                             isAddingNewChannel = true
                             editingChannel = RadioChannel(
-                                number = channels.size + 1,
+                                number = if (supportsZones) {
+                                    val range = if (selectedZone == 0) 1..selectedRadio.maxChannels
+                                        else ((selectedZone - 1) * 100 + 1)..(selectedZone * 100)
+                                    range.firstOrNull { slot -> channels.none { it.number == slot } } ?: return@TextButton
+                                } else channels.size + 1,
                                 name = "CH ${(channels.size + 1).toString().padStart(2, '0')}",
                                 rxFreqHz = 146520000L,
                                 txFreqHz = 146520000L,
@@ -399,20 +391,32 @@ fun CodeplugTabScreen(
             }
 
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked=channels.isNotEmpty() && selectedNumbers.size==channels.size,onCheckedChange={ checked ->
-                    selectedNumbers=if(checked) channels.map{it.number}.toSet() else emptySet()
+                Checkbox(checked=visibleChannels.isNotEmpty() && selectedNumbers.size==visibleChannels.size,onCheckedChange={ checked ->
+                    selectedNumbers=if(checked) visibleChannels.map{it.number}.toSet() else emptySet()
                 })
                 Text(
                     if (selectedNumbers.isEmpty()) "Select all" else "${selectedNumbers.size} selected",
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = { showRadioControls = !showRadioControls }) {
-                    Icon(
-                        Icons.Default.Radio,
-                        contentDescription = if (showRadioControls) "Hide radio controls" else "Show radio controls",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                if (supportsZones) {
+                    Box {
+                        TextButton(onClick = { showZones = true }) {
+                            Text(if (selectedZone == 0) "All zones ▾" else "Zone $selectedZone ▾", style = MaterialTheme.typography.labelSmall)
+                        }
+                        DropdownMenu(expanded = showZones, onDismissRequest = { showZones = false }) {
+                            (0..10).forEach { zone ->
+                                val name = if (zone == 0) "All zones" else
+                                    zoneNames.getOrNull(zone - 1).orEmpty().let {
+                                        if (it.isBlank()) "Zone $zone" else "Zone $zone · $it"
+                                    }
+                                DropdownMenuItem(text = { Text(name) }, onClick = {
+                                    selectedZone = zone
+                                    showZones = false
+                                })
+                            }
+                        }
+                    }
                 }
                 if (selectedNumbers.isNotEmpty()) {
                     TextButton(onClick = { showEditSelection = true }, enabled = !isFlashing) { Text("Edit") }
@@ -420,7 +424,11 @@ fun CodeplugTabScreen(
                 }
             }
             // Simple, clean Channel List with Drag-and-Drop & Single RxOnly Checkbox
+            if (visibleChannels.isEmpty() && selectedZone != 0) {
+                Text("No channels in this zone.", modifier = Modifier.padding(16.dp))
+            }
             LazyColumn(
+                state = channelListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .testTag("codeplug_channels_list"),
@@ -428,40 +436,31 @@ fun CodeplugTabScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 itemsIndexed(
-                    items = channels,
+                    items = visibleChannels,
                     key = { _, ch -> "cp_${ch.number}_${ch.name}_${ch.rxFreqHz}" }
                 ) { index, channel ->
-                    val isDragging = draggedIndex == index
-                    val rowHeightPx = 150f
-
+                    val move = androidx.compose.runtime.rememberUpdatedState<(Int) -> Unit> { target ->
+                        moveVisibleChannel(index, target)
+                    }
                     Surface(
                         modifier = Modifier
+                            .animateItem()
+                            .then(channelDrag.row(index, MaterialTheme.colorScheme.primary))
                             .fillMaxWidth()
-                            .zIndex(if (isDragging) 10f else 0f)
-                            .offset {
-                                IntOffset(
-                                    x = 0,
-                                    y = if (isDragging) dragOffsetY.roundToInt() else 0
-                                )
-                            }
                             .clip(RoundedCornerShape(10.dp))
                             .clickable {
                                 isAddingNewChannel = false
                                 editingChannel = channel
                             }
                             .testTag("codeplug_channel_row_${channel.number}"),
-                        color = if (isDragging) {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        }
+                        color = MaterialTheme.colorScheme.surface
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .border(
-                                    width = if (isDragging) 1.5.dp else 1.dp,
-                                    color = if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outline,
                                     shape = RoundedCornerShape(10.dp)
                                 )
                                 .padding(horizontal = 8.dp, vertical = 8.dp),
@@ -479,36 +478,7 @@ fun CodeplugTabScreen(
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
-                                    .pointerInput(channels.size) {
-                                        detectVerticalDragGestures(
-                                            onDragStart = {
-                                                draggedIndex = index
-                                                dragOffsetY = 0f
-                                            },
-                                            onVerticalDrag = { change, dragAmount ->
-                                                change.consume()
-                                                dragOffsetY += dragAmount
-                                                val currentDragIdx = draggedIndex ?: return@detectVerticalDragGestures
-                                                if (dragOffsetY > rowHeightPx && currentDragIdx < channels.lastIndex) {
-                                                    onMoveChannel(currentDragIdx, currentDragIdx + 1)
-                                                    draggedIndex = currentDragIdx + 1
-                                                    dragOffsetY -= rowHeightPx
-                                                } else if (dragOffsetY < -rowHeightPx && currentDragIdx > 0) {
-                                                    onMoveChannel(currentDragIdx, currentDragIdx - 1)
-                                                    draggedIndex = currentDragIdx - 1
-                                                    dragOffsetY += rowHeightPx
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                draggedIndex = null
-                                                dragOffsetY = 0f
-                                            },
-                                            onDragCancel = {
-                                                draggedIndex = null
-                                                dragOffsetY = 0f
-                                            }
-                                        )
-                                    },
+                                    .then(channelDrag.handle(index, visibleChannels.indices) { move.value }),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -553,7 +523,7 @@ fun CodeplugTabScreen(
 
                             // Up/Down quick reorder buttons for precision
                             IconButton(
-                                onClick = { if (index > 0) onMoveChannel(index, index - 1) },
+                                onClick = { if (index > 0) moveVisibleChannel(index, index - 1) },
                                 enabled = index > 0,
                                 modifier = Modifier.size(28.dp)
                             ) {
@@ -564,8 +534,8 @@ fun CodeplugTabScreen(
                                 )
                             }
                             IconButton(
-                                onClick = { if (index < channels.lastIndex) onMoveChannel(index, index + 1) },
-                                enabled = index < channels.lastIndex,
+                                onClick = { if (index < visibleChannels.lastIndex) moveVisibleChannel(index, index + 1) },
+                                enabled = index < visibleChannels.lastIndex,
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(

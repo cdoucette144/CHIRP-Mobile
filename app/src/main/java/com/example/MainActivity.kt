@@ -28,6 +28,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.ui.graphics.Color
+import com.example.ui.viewmodel.HardwareConnectionStatus
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -181,6 +184,8 @@ fun AuthenticatedFieldWorkspace(
 
     var currentTab by rememberSaveable { mutableStateOf(MainTab.CHANNEL_BANKS) }
     var showSettingsModal by remember { mutableStateOf(false) }
+    val hasCodeplug = isCodeplugLoaded || codeplugChannels.isNotEmpty()
+    var showCodeplugRadioControls by remember(hasCodeplug) { mutableStateOf(!hasCodeplug) }
 
     BackHandler(enabled = currentTab != MainTab.CHANNEL_BANKS) {
         currentTab = MainTab.CHANNEL_BANKS
@@ -209,6 +214,20 @@ fun AuthenticatedFieldWorkspace(
                         }
                     },
                     actions = {
+                        if (currentTab == MainTab.CODEPLUG) {
+                            val (description, tint) = when {
+                                isFlashing || connectivityState.status == HardwareConnectionStatus.CONNECTING ->
+                                    "Radio transfer in progress" to Color(0xFFFFC547)
+                                connectivityState.status == HardwareConnectionStatus.CONNECTED ->
+                                    "Radio connected" to Color(0xFF4CAF70)
+                                connectivityState.status == HardwareConnectionStatus.FAILED ->
+                                    "Radio error" to Color(0xFFF36C68)
+                                else -> "Radio disconnected" to Color(0xFFF36C68)
+                            }
+                            IconButton(onClick = { showCodeplugRadioControls = !showCodeplugRadioControls }) {
+                                Icon(Icons.Default.Radio, contentDescription = description, tint = tint)
+                            }
+                        }
                         IconButton(
                             onClick = { showSettingsModal = true },
                             modifier = Modifier.testTag("top_settings_button")
@@ -355,7 +374,12 @@ fun AuthenticatedFieldWorkspace(
                                 channels = codeplugChannels,
                                 selectedRadio = selectedRadio,
                                 cloudSavedCodeplugs = cloudSavedCodeplugs,
-                                connectivityState = connectivityState,
+                                showRadioControls = showCodeplugRadioControls,
+                                zoneNames = List(10) { index ->
+                                    radioSettings.uv32ZoneNames[index].ifBlank {
+                                        radioSettings.uv32Downloaded?.zoneNames?.getOrNull(index).orEmpty()
+                                    }
+                                },
                                 isFlashing = isFlashing,
                                 flashProgress = flashProgress,
                                 flashLogs = flashLogs,
@@ -382,12 +406,7 @@ fun AuthenticatedFieldWorkspace(
                                 onUploadToRadio = { mgr, mode, bleAddr, usbName ->
                                     viewModel.uploadCurrentCodeplugToRadio(mgr, mode, bleAddr, usbName)
                                 },
-                                onRetryConnection = {
-                                    viewModel.retryLastHardwareOperation()
-                                },
-                                onDisconnectHardware = {
-                                    viewModel.disconnectHardware()
-                                },
+
                                 onSaveLocal = { name ->
                                     viewModel.saveCodeplugLocally(context, name)
                                 },
