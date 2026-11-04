@@ -1201,8 +1201,20 @@ class HardwareProgrammerManager(private val context: Context) {
         } finally {
             transport.close()
         }
-        kotlinx.coroutines.delay(1000)
-        val verified = capture(0.68f)
+        progress(0.66f, "[RT-950 PRO] Settings write acknowledged. Waiting for the radio before read-back.")
+        var readBack: ByteArray? = null
+        for (attempt in 1..3) {
+            kotlinx.coroutines.delay(5000)
+            try {
+                readBack = capture(0.68f)
+                break
+            } catch (error: Rt950ProReader.MissingHandshakeAck) {
+                android.util.Log.w("ChirpBluetooth", "RT-950 Pro read-back handshake attempt $attempt failed", error)
+            }
+        }
+        val verified = readBack ?: throw IOException(
+            "RT-950 Pro acknowledged the write but did not reconnect for verification. Download over USB before trying another upload."
+        )
         if (!verified.contentEquals(desired)) throw IOException("RT-950 Pro settings read-back differs from the upload. Backups retained.")
         rt950Baseline = Triple(cable, verified, channels)
         lastPersistenceMessage = "RT-950 Pro settings and zone names verified after upload."

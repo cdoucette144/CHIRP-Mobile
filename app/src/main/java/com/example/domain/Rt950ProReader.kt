@@ -9,6 +9,8 @@ import kotlin.math.abs
 
 /** RT-950 Pro clone protocol for Bluetooth downloads and USB settings transfers. */
 internal object Rt950ProReader {
+    class MissingHandshakeAck(message: String) : IOException(message)
+
     val unlockFrame: ByteArray
         get() = byteArrayOf(0x3f, 0x3f, 0x3f, 0x3f, 0x02, 0x2e, 0x17, 0x1d, 0x5e, 0x57,
             0x25, 0x2f, 0x57, 0x13, 0x62, 0x56, 0x04, 0x4b, 0x23, 0x42)
@@ -70,7 +72,9 @@ internal object Rt950ProReader {
         }
         if (reply.firstOrNull() != 6.toByte()) {
             val detail = reply.firstOrNull()?.let { "reply %02X".format(it) } ?: "no ACK"
-            throw IOException("RT-950 Pro handshake failed ($detail after $echoed echoed bytes).")
+            val message = "RT-950 Pro handshake failed ($detail after $echoed echoed bytes)."
+            if (reply.isEmpty()) throw MissingHandshakeAck(message)
+            throw IOException(message)
         }
         suspend fun send(command: ByteArray) {
             transport.writeBytes(command)
@@ -111,7 +115,9 @@ internal object Rt950ProReader {
                     send(header + ByteArray(data.size) { crypt(data[it], it).toByte() })
                     ack("settings write %04X".format(address), 10_000)
                     kotlinx.coroutines.delay(50)
-                    progress(0.65f, "[RT-950 PRO WRITE %04X] acknowledged".format(address))
+                    val message = "[RT-950 PRO WRITE %04X] acknowledged".format(address)
+                    android.util.Log.i("ChirpBluetooth", message)
+                    progress(0.65f, message)
                 }
                 return byteArrayOf()
             }
