@@ -658,6 +658,7 @@ class ChirpViewModel(
                 )
                 _statusBanner.value = if (radio.model.contains("UV-5R Mini")) "Upload reconnect check passed. Power-cycle radio, then Download to verify persistence." else if (radio.id == "baofeng_uv32") "UV-32 upload check passed. Power-cycle and download to confirm persistence." else "Uploaded ${channels.size} channels to ${radio.model}."
             } catch (e: Exception) {
+                Log.e("ChirpBluetooth", "Upload failed for ${radio.model}", e)
                 val msg = e.localizedMessage ?: "Hardware clone write failed."
                 _flashLogs.value = _flashLogs.value + "[ERROR] $msg"
                 _hardwareConnectivity.value = HardwareConnectivityState(
