@@ -569,7 +569,7 @@ class ChirpViewModel(
                     )
                 }
                 _codeplugChannels.value = downloadedChannels.mapIndexed { idx, ch ->
-                    if (radio.id in setOf("baofeng_uv32", "radtel_rt950_pro") || radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                    if (radio.id in setOf("baofeng_uv32", "baofeng_uv17_pro_gps", "radtel_rt950_pro") || radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
                 }
                 if (radio.id == "radtel_rt950_pro") {
                     _radioSettings.value = _radioSettings.value.copy(
@@ -583,7 +583,7 @@ class ChirpViewModel(
                         miniEdits = emptyMap()
                     )
                 }
-                programmerManager.lastUv32Settings?.takeIf { radio.id == "baofeng_uv32" }?.let { snapshot ->
+                programmerManager.lastUv32Settings?.takeIf { radio.id in setOf("baofeng_uv32", "baofeng_uv17_pro_gps") }?.let { snapshot ->
                     val current = _radioSettings.value
                     _radioSettings.value = current.copy(
                         uv32Downloaded = snapshot,

@@ -25,7 +25,7 @@ data class classSupportedRadioModel(
     val protocolNotes: String
 ) {
     val zoneSize: Int get() = when (id) {
-        "baofeng_uv32" -> 100
+        "baofeng_uv32", "baofeng_uv17_pro_gps" -> 100
         "radtel_rt950_pro" -> 99
         else -> 0
     }
@@ -88,14 +88,14 @@ object RadioCatalog {
         classSupportedRadioModel(
             id = "baofeng_uv17_pro_gps",
             vendor = "Baofeng",
-            model = "Baofeng UV-17 Pro / UV-21R",
-            maxChannels = 999,
+            model = "Baofeng UV-17 Pro GPS",
+            maxChannels = 1000,
             bandsSummary = "6-Band RX / VHF & UHF TX (10 Zones)",
             supportedBandsMhz = listOf(108.0..136.0, 136.0..174.0, 220.0..260.0, 350.0..390.0, 400.0..520.0),
-            transport = TransportInterface.BOTH,
-            supportsNativeRxOnly = false,
+            transport = TransportInterface.USB_OTG,
+            supportsNativeRxOnly = true,
             eepromIdent = "BF17PRO",
-            protocolNotes = "10-Zone 999-channel layout. Uses FRS Ch 1 (462.5625 MHz @ 0.5W) fallback when programmed for scanner-only users."
+            protocolNotes = "USB programming at 115200 baud. Ten zones with 100 slots each."
         ),
         classSupportedRadioModel(
             id = "baofeng_uv82",

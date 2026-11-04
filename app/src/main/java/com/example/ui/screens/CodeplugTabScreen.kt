@@ -1024,7 +1024,9 @@ private fun HardwareTransferModal(
     onExecute: (classSupportedRadioModel, String, String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var transport by remember(selectedRadio.id) { mutableStateOf("Bluetooth LE") }
+    var transport by remember(selectedRadio.id) {
+        mutableStateOf(if (selectedRadio.id == "baofeng_uv17_pro_gps") "USB OTG Serial" else "Bluetooth LE")
+    }
     var usbCables by remember { mutableStateOf(programmerManager.scanUsbOtgDevices()) }
     var selectedUsbDeviceName by remember { mutableStateOf(usbCables.firstOrNull()?.deviceName ?: "") }
     val bleDevices = remember { mutableStateListOf<DetectedBleRadio>() }
@@ -1093,7 +1095,7 @@ private fun HardwareTransferModal(
                     Text("RT-950 Pro uploads settings and zone names over USB.")
                 }
                 run {
-                    val connections = listOf("Bluetooth", "USB cable")
+                    val connections = if (selectedRadio.id == "baofeng_uv17_pro_gps") listOf("USB cable") else listOf("Bluetooth", "USB cable")
                     com.example.ui.components.ChoiceDropdown(
                         label = "Connection",
                         options = connections,

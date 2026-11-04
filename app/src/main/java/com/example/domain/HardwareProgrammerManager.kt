@@ -127,6 +127,7 @@ class HardwareProgrammerManager(private val context: Context) {
         private set
     private data class Uv32Baseline(
         val bluetooth: Boolean,
+        val gpsProfile: Boolean,
         val device: String,
         val image: ByteArray,
         val channels: List<RadioChannel>
@@ -908,8 +909,9 @@ class HardwareProgrammerManager(private val context: Context) {
         try {
             if (uv17Family) {
                 initializeUv17Family(transport, onProgress)
-                val channels = readColorClone(transport, onProgress, initialize = false, uv32 = true, familyLabel = "UV-17/UV-21")
+                val channels = readColorClone(transport, onProgress, initialize = false, uv32 = true, familyLabel = "UV-17 Pro GPS")
                 MiniSessionExit.finish(transport, reconnectWaitMs = 0)
+                uv32Baseline = Uv32Baseline(false, true, usbDeviceName, checkNotNull(lastUv32Image).copyOf(), channels)
                 return@withContext channels
             }
             if (rt950Pro) {
@@ -930,7 +932,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 MiniSessionExit.finish(transport, reconnectWaitMs = 0)
                 val bluetooth = transportMode == "Bluetooth LE"
                 uv32Baseline = Uv32Baseline(
-                    bluetooth, if (bluetooth) bleAddress else usbDeviceName,
+                    bluetooth, false, if (bluetooth) bleAddress else usbDeviceName,
                     checkNotNull(lastUv32Image).copyOf(), channels
                 )
                 return@withContext channels
@@ -1045,11 +1047,12 @@ class HardwareProgrammerManager(private val context: Context) {
             uploadRt950Settings(usbDeviceName, channels, settings, onProgress)
             return@withContext
         }
-        require(radio.id != "baofeng_uv17_pro_gps") { "UV-17/UV-21 family support is currently USB download only." }
         val miniWired = radio.id == "baofeng_uv5_mini" && transportMode == "USB OTG Serial"
-        if (radio.id == "baofeng_uv32") {
+        val gpsProfile = radio.id == "baofeng_uv17_pro_gps"
+        if (radio.id == "baofeng_uv32" || gpsProfile) {
             val bluetooth = transportMode == "Bluetooth LE"
-            uploadUv32(bluetooth, if (bluetooth) bleAddress else usbDeviceName, channels, settings, onProgress)
+            require(!gpsProfile || !bluetooth) { "Use USB cable for the UV-17 Pro GPS." }
+            uploadUv32(bluetooth, gpsProfile, if (bluetooth) bleAddress else usbDeviceName, channels, settings, onProgress)
             return@withContext
         }
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
@@ -1261,14 +1264,17 @@ class HardwareProgrammerManager(private val context: Context) {
 
     private suspend fun uploadUv32(
         bluetooth: Boolean,
+        gpsProfile: Boolean,
         device: String,
         channels: List<RadioChannel>,
         settings: com.example.data.model.RadioSettingsState,
         progress: (Float, String) -> Unit
     ) {
-        val baseline = requireNotNull(uv32Baseline) { "Download from the UV-32 before uploading." }
-        require(bluetooth == baseline.bluetooth && device == baseline.device) {
-            "Download from the UV-32 using this connection before uploading."
+        val model = if (gpsProfile) "UV-17 Pro GPS" else "UV-32"
+        val familyLabel = model.takeIf { gpsProfile }
+        val baseline = requireNotNull(uv32Baseline) { "Download from the $model before uploading." }
+        require(gpsProfile == baseline.gpsProfile && bluetooth == baseline.bluetooth && device == baseline.device) {
+            "Download from the $model using this connection before uploading."
         }
         val before = baseline.channels.associateBy { it.number }
         val after = channels.associateBy { it.number }
@@ -1281,12 +1287,16 @@ class HardwareProgrammerManager(private val context: Context) {
             reconnectUv32(device) { progress(at, it) }
         } else openUsbOtgTransport(device, 115200) { progress(at, it) }
         try {
-            readColorClone(transport, { pct, msg -> progress(pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = bluetooth)
+            if (gpsProfile) initializeUv17Family(transport, progress)
+            readColorClone(transport, { pct, msg -> progress(pct * 0.33f, msg) }, initialize = !gpsProfile, uv32 = true, includeUv32Extras = bluetooth, familyLabel = familyLabel)
             val original = checkNotNull(lastUv32Image)
             val extras = lastUv32Extras
             require(original.contentEquals(baseline.image)) { "Radio memory changed since download. Download again before uploading." }
             require(edits.none { it in 1..1000 && it !in before && original[(it - 1) * 32] != 0xff.toByte() }) {
                 "An edited slot contains an unreadable channel. Choose a different slot."
+            }
+            require(!gpsProfile || channels.none { it.number in edits && it.power == PowerLevel.MID }) {
+                "UV-17 Pro GPS uses High or Low power. Change the edited channel power before uploading."
             }
             val channelImage = MiniChannelPatch.applyUv32(original, channels, edits, before)
             val desired = Uv32SettingsPatch.apply(channelImage, settings)
@@ -1321,7 +1331,8 @@ class HardwareProgrammerManager(private val context: Context) {
             // A backup is a complete download session. Start a fresh clone session for writing.
             MiniSessionExit.finish(transport)
             transport = reconnect(0.33f)
-            initializeColorClone(transport, true) { pct, message -> progress(0.33f + pct * 0.02f, message) }
+            if (gpsProfile) initializeUv17Family(transport) { _, message -> progress(0.34f, message) }
+            else initializeColorClone(transport, true) { pct, message -> progress(0.33f + pct * 0.02f, message) }
             uv32Baseline = null
             val key = intArrayOf(0x43, 0x4f, 0x20, 0x37)
             for ((index, block) in blocks.withIndex()) {
@@ -1333,25 +1344,26 @@ class HardwareProgrammerManager(private val context: Context) {
                         payload[i] = (value xor k).toByte()
                     }
                 }
-                android.util.Log.i("ChirpBluetooth", "UV-32 write %04X TX %d bytes".format(at, payload.size + 4))
+                android.util.Log.i("ChirpBluetooth", "$model write %04X TX %d bytes".format(at, payload.size + 4))
                 transport.writeBytes(byteArrayOf(0x57, (at shr 8).toByte(), at.toByte(), payload.size.toByte()) + payload)
                 val ack = transport.readBytes(1, 4000L)
                 if (!ack.contentEquals(byteArrayOf(6))) {
                     val reply = ack.joinToString(" ") { "%02X".format(it) }.ifEmpty { "no reply" }
-                    android.util.Log.w("ChirpBluetooth", "UV-32 write %04X RX $reply".format(at))
+                    android.util.Log.w("ChirpBluetooth", "$model write %04X RX $reply".format(at))
                     throw IOException("UV-32 write failed at %04X. Backup retained.".format(at))
                 }
-                progress(0.33f + 0.33f * (index + 1) / blocks.size, "Writing UV-32 block %04X".format(at))
+                progress(0.33f + 0.33f * (index + 1) / blocks.size, "Writing $model block %04X".format(at))
             }
             MiniSessionExit.finish(transport)
             val verify = reconnect(0.66f)
             try {
-                readColorClone(verify, { pct, msg -> progress(0.66f + pct * 0.33f, msg) }, uv32 = true, includeUv32Extras = bluetooth)
+                if (gpsProfile) initializeUv17Family(verify) { _, message -> progress(0.67f, message) }
+                readColorClone(verify, { pct, msg -> progress(0.66f + pct * 0.33f, msg) }, initialize = !gpsProfile, uv32 = true, includeUv32Extras = bluetooth, familyLabel = familyLabel)
                 val matches = desired.contentEquals(checkNotNull(lastUv32Image)) &&
                     (!bluetooth || checkNotNull(extras).contentEquals(checkNotNull(lastUv32Extras)))
                 MiniSessionExit.finish(verify, reconnectWaitMs = 0)
-                if (!matches) throw IOException("UV-32 read-back differs from the upload. Backups retained.")
-                progress(1f, "UV-32 upload verified after reconnecting.")
+                if (!matches) throw IOException("$model read-back differs from the upload. Backups retained.")
+                progress(1f, "$model upload verified after reconnecting.")
             } finally {
                 verify.close()
             }
@@ -1394,14 +1406,17 @@ class HardwareProgrammerManager(private val context: Context) {
     }
 
     private suspend fun initializeUv17Family(transport: RadioSerialTransport, progress: (Float, String) -> Unit) {
-        val profiles = listOf("PROGRAMCOLORPROU" to 7, "PROGRAMBFNORMALU" to 15)
+        val profiles = listOf("PROGRAMCOLORPROU" to 7)
         for ((magic, modelLength) in profiles) {
             transport.clearRxBuffer()
             transport.writeBytes(magic.toByteArray(Charsets.US_ASCII))
             if (transport.readBytes(1, 1200).firstOrNull() != 6.toByte()) continue
-            val model = "UV-17/UV-21"
+            val model = "UV-17 Pro GPS"
             exchangeColorClone(transport, model, byteArrayOf(0x46), 16, "firmware identification")
             val ident = exchangeColorClone(transport, model, byteArrayOf(0x4d), modelLength, "model identification")
+            val modelId = ident.toString(Charsets.US_ASCII).trim { it <= ' ' }
+            require(!modelId.contains("UV32", ignoreCase = true)) { "Select the UV-32 profile for this radio." }
+            android.util.Log.i("ChirpBluetooth", "UV-17 Pro GPS model identifier: $modelId")
             progress(0.10f, "[$model IDENT] " + ident.joinToString(" ") { "%02X".format(it) })
             val init = byteArrayOf(0x53,0x45,0x4e,0x44,0x21,0x05,0x0d,0x01,0x01,0x01,0x04,0x11,0x08,0x05,0x0d,0x0d,0x01,0x11,0x0f,0x09,0x12,0x09,0x10,0x04,0x00)
             if (exchangeColorClone(transport, model, init, 1, "session initialization")[0] != 6.toByte()) {
@@ -1438,7 +1453,7 @@ class HardwareProgrammerManager(private val context: Context) {
         }
         val captured = image.toByteArray()
         val bytes = if (includeUv32Extras) captured.copyOf(0x8380) else captured
-        if (uv32 && familyLabel == null) {
+        if (uv32) {
             lastUv32Image = bytes
             lastUv32Extras = if (includeUv32Extras) captured.copyOfRange(0x8380, captured.size) else null
             lastUv32Settings = com.example.data.model.Uv32SettingsSnapshot.fromImage(bytes)
@@ -1482,7 +1497,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 mode=if(rx in 108000000L..135999999L) "AM" else if((bytes[offset+15].toInt() and 0x40)!=0) "FM" else "NFM",
                 power=when (bytes[offset+14].toInt() and 3) {
                     1 -> PowerLevel.LOW
-                    2 -> if (uv32) PowerLevel.MID else PowerLevel.HIGH
+                    2 -> if (uv32 && familyLabel == null) PowerLevel.MID else PowerLevel.HIGH
                     else -> PowerLevel.HIGH
                 },
                 rxOnly=off,notes="$model download; complete raw backup retained on device.",

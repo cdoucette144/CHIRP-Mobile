@@ -140,12 +140,12 @@ fun RadioSettingsTabScreen(
             }
             return@LazyColumn
         }
-        if (selectedRadio.id == "baofeng_uv32") {
+        if (selectedRadio.id in setOf("baofeng_uv32", "baofeng_uv17_pro_gps")) {
             item {
                 val snapshot = settings.uv32Downloaded
-                Text("UV-32 radio settings", style = MaterialTheme.typography.titleMedium)
+                Text("${selectedRadio.model} settings", style = MaterialTheme.typography.titleMedium)
                 if (snapshot == null) {
-                    Text("Download from the UV-32 to load its settings.", style = MaterialTheme.typography.bodySmall)
+                    Text("Download from the radio to load its settings.", style = MaterialTheme.typography.bodySmall)
                 } else {
                     Text("Changes are sent with your channels when you tap Upload in Codeplug.")
                     val enabled = snapshot.gpsEnabled?.let { if (it) "On" else "Off" } ?: "Unknown"
@@ -190,7 +190,7 @@ fun RadioSettingsTabScreen(
                 }
             }
             item {
-                Text("UV-32 zone names", style = MaterialTheme.typography.titleMedium)
+                Text("Zone names", style = MaterialTheme.typography.titleMedium)
             }
             items(10) { index ->
                 val slot = index + 1
