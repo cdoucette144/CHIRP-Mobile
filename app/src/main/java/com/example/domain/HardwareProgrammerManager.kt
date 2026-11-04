@@ -436,7 +436,9 @@ class HardwareProgrammerManager(private val context: Context) {
                 if (baudControl.properties and BluetoothGattCharacteristic.PROPERTY_WRITE == 0) {
                     throw IOException("UV-32 Bluetooth baud control does not support acknowledged writes.")
                 }
-                val baudBytes = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(115200).array()
+                // The FFE0 bridge uses a 20-byte configuration frame.
+                // Byte 4 (zero-based) selects the baud rate: 2 means 115200.
+                val baudBytes = ByteArray(20).apply { this[4] = 0x02 }
                 writeAckSignal.clear()
                 @Suppress("DEPRECATION")
                 baudControl.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
@@ -449,7 +451,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     throw IOException("UV-32 Bluetooth baud setup failed (status=$status).")
                 }
-                android.util.Log.i("ChirpBluetooth", "UV-32 FF31 accepted 00 C2 01 00 (115200 baud)")
+                android.util.Log.i("ChirpBluetooth", "UV-32 FF31 GATT write accepted (20-byte frame, baud selector 02)")
                 onLog("[UV-32] Bluetooth bridge configured for 115200 baud.")
             } catch (error: Exception) {
                 connectedGatt.disconnect()
