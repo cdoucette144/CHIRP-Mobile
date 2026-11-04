@@ -347,15 +347,21 @@ class ChirpViewModel(
      * Tacks all channels from the selected Channel Bank onto the end of the current Codeplug in Tab 2.
      * Applies proper per-channel RxOnly / FRS1 low-power fallback based on the current radio.
      */
-    fun appendBankToCurrentCodeplug(bank: ZoneDocument, onAppended: () -> Unit = {}) {
+    fun appendBankToCurrentCodeplug(bank: ZoneDocument, zone: Int, onAppended: () -> Unit = {}) {
         val radio = _selectedRadio.value
         val currentList = _codeplugChannels.value.toMutableList()
         val bankChannels = bank.parsedChannels().map { ch ->
             normalizeChannelForRadio(ch, ch.rxOnly, radio)
         }
+        val destinationZone = zone.takeIf { radio.id == "baofeng_uv32" && it in 1..10 }
         val combined = if (radio.id == "baofeng_uv32") {
             val used = currentList.map { it.number }.toSet()
-            val free = (1..radio.maxChannels).filterNot { it in used }
+            val range = destinationZone?.let { ((it - 1) * 100 + 1)..(it * 100) } ?: (1..radio.maxChannels)
+            val free = range.filterNot { it in used }
+            if (destinationZone != null && bankChannels.size > free.size) {
+                _statusBanner.value = "Zone $destinationZone has ${free.size} free slots. '${bank.name}' needs ${bankChannels.size}."
+                return
+            }
             (currentList + bankChannels.zip(free) { channel, slot -> channel.copy(number = slot) }).sortedBy { it.number }
         } else {
             (currentList + bankChannels).take(radio.maxChannels)
@@ -367,7 +373,8 @@ class ChirpViewModel(
             _isCodeplugLoaded.value = true
             _codeplugTitle.value = "${radio.model} Codeplug"
         }
-        _statusBanner.value = "Added '${bank.name}' (${bankChannels.size} ch) to end of codeplug (Total: ${combined.size} ch)."
+        val destination = destinationZone?.let { "Zone $it" } ?: "the codeplug"
+        _statusBanner.value = "Added '${bank.name}' (${combined.size - currentList.size} ch) to $destination (Total: ${combined.size} ch)."
         onAppended()
     }
 

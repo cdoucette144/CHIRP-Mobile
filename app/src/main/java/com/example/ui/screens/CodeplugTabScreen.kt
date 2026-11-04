@@ -110,6 +110,8 @@ fun CodeplugTabScreen(
     cloudSavedCodeplugs: List<ZoneDocument>,
     showRadioControls: Boolean,
     zoneNames: List<String>,
+    selectedZone: Int,
+    onSelectZone: (Int) -> Unit,
     isFlashing: Boolean,
     flashProgress: Float,
     flashLogs: List<String>,
@@ -144,7 +146,6 @@ fun CodeplugTabScreen(
     var isAddingNewChannel by remember { mutableStateOf(false) }
 
     val supportsZones = selectedRadio.id == "baofeng_uv32"
-    var selectedZone by remember(selectedRadio.id, codeplugTitle) { mutableStateOf(0) }
     var addMenu by remember { mutableStateOf(false) }
     var showReference by remember { mutableStateOf(false) }
     var slotToEdit by remember { mutableStateOf<Int?>(null) }
@@ -400,7 +401,7 @@ fun CodeplugTabScreen(
                                         if (it.isBlank()) "Zone $zone" else "Zone $zone · $it"
                                     }
                                 DropdownMenuItem(text = { Text(name) }, onClick = {
-                                    selectedZone = zone
+                                    onSelectZone(zone)
                                     showZones = false
                                 })
                             }

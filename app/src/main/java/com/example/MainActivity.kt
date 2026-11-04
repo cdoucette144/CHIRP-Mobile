@@ -184,6 +184,7 @@ fun AuthenticatedFieldWorkspace(
     val flashLogs by viewModel.flashLogs.collectAsStateWithLifecycle()
 
     var currentTab by rememberSaveable { mutableStateOf(MainTab.CHANNEL_BANKS) }
+    var selectedCodeplugZone by rememberSaveable(selectedRadio.id, codeplugTitle) { mutableStateOf(0) }
     var showSettingsModal by remember { mutableStateOf(false) }
     val hasCodeplug = isCodeplugLoaded || codeplugChannels.isNotEmpty()
     var showCodeplugRadioControls by remember(hasCodeplug) { mutableStateOf(!hasCodeplug) }
@@ -365,7 +366,7 @@ fun AuthenticatedFieldWorkspace(
                                     viewModel.deleteChannelBank(bank)
                                 },
                                 onAddBankToCodeplug = { bank ->
-                                    viewModel.appendBankToCurrentCodeplug(bank) {
+                                    viewModel.appendBankToCurrentCodeplug(bank, selectedCodeplugZone) {
                                         currentTab = MainTab.CODEPLUG
                                     }
                                 }
@@ -380,6 +381,8 @@ fun AuthenticatedFieldWorkspace(
                                 selectedRadio = selectedRadio,
                                 cloudSavedCodeplugs = cloudSavedCodeplugs,
                                 showRadioControls = showCodeplugRadioControls,
+                                selectedZone = selectedCodeplugZone,
+                                onSelectZone = { selectedCodeplugZone = it },
                                 zoneNames = List(10) { index ->
                                     radioSettings.uv32ZoneNames[index].ifBlank {
                                         radioSettings.uv32Downloaded?.zoneNames?.getOrNull(index).orEmpty()
