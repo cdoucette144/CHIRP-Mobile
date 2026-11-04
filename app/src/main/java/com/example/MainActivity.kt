@@ -128,7 +128,9 @@ fun ChirpFieldAppNavigation(
         currentUserId = "local",
         userDisplayName = "Local Operator",
         isDarkTheme = isDarkTheme,
-        onToggleTheme = onToggleTheme
+        onToggleTheme = onToggleTheme,
+        palette = palette,
+        onPaletteChange = onPaletteChange
     )
 }
 
@@ -138,7 +140,9 @@ fun AuthenticatedFieldWorkspace(
     currentUserId: String,
     userDisplayName: String,
     isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit
+    onToggleTheme: () -> Unit,
+    palette: String = "Amber / Cyan",
+    onPaletteChange: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
