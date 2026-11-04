@@ -114,6 +114,8 @@ interface RadioSerialTransport {
 
 class HardwareProgrammerManager(private val context: Context) {
     private var lastMiniImage: ByteArray? = null
+    var lastPersistenceMessage: String? = null
+        private set
 
     fun scanUsbOtgDevices(): List<DetectedUsbCable> {
         val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return emptyList()
@@ -782,7 +784,19 @@ class HardwareProgrammerManager(private val context: Context) {
         }
 
         try {
-            if (radio.model == "UV-5R Mini" || radio.model == "Baofeng UV-5R Mini") return@withContext readMini(transport, onProgress)
+            if (radio.model.contains("UV-5R Mini")) {
+                lastPersistenceMessage = null
+                val result = readMini(transport,onProgress)
+                val pending = java.io.File(context.filesDir,"mini-pending-verification.bin")
+                if (pending.exists()) {
+                    val matches = pending.readBytes().contentEquals(checkNotNull(lastMiniImage))
+                    lastPersistenceMessage = if(matches) "Persistence check matched the uploaded image. Confirm this download followed a radio power-cycle." else "Persistence check FAILED: radio memory differs from the uploaded image. Backup retained."
+                    android.util.Log.i("ChirpBluetooth", if(matches) "[PERSISTENCE MATCH] Full image matched" else "[PERSISTENCE FAILED] Full image differs")
+                    onProgress(1f,checkNotNull(lastPersistenceMessage))
+                }
+                MiniSessionExit.finish(transport,reconnectWaitMs=0)
+                return@withContext result
+            }
             performChirpHandshake(transport, radio) { line -> onProgress(0.15f, line) }
 
             // Read first 32 channels (32 * 16 bytes = 512 bytes = 8 blocks of 0x40 bytes from 0x0000..0x01C0)
@@ -909,11 +923,21 @@ class HardwareProgrammerManager(private val context: Context) {
                     if (ack.size != 1 || ack[0] != 6.toByte()) throw IOException("Mini write acknowledgment failed at %04X. Backup retained; read the radio before retrying.".format(address))
                     onProgress(0.35f + 0.25f*(index+1)/blocks.size,"[WRITE %04X] acknowledged".format(address))
                 }
-                readMini(transport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[VERIFY] $message") }, initialize = false)
-                val actual = checkNotNull(lastMiniImage)
-                if (!desired.contentEquals(actual)) throw IOException("Mini read-back differs from the intended memory image. Backup retained; upload is not verified.")
-                android.util.Log.i("ChirpBluetooth", "[VERIFIED] Mini channel changes read back correctly; other memory preserved.")
-                onProgress(1f,"[VERIFIED] Mini channel changes read back correctly; other memory preserved.")
+                java.io.File(context.filesDir,"mini-pending-verification.bin").writeBytes(desired)
+                onProgress(0.60f,"[FINALIZE] Sending programming exit and waiting for radio...")
+                MiniSessionExit.finish(transport)
+                val verifyTransport = if(transportMode=="Bluetooth LE") openBleOrSppTransport(bleAddress) { android.util.Log.i("ChirpBluetooth",it) } else openUsbOtgTransport(usbDeviceName) { android.util.Log.i("ChirpBluetooth",it) }
+                try {
+                    readMini(verifyTransport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[RECONNECT VERIFY] $message") })
+                    val actual = checkNotNull(lastMiniImage)
+                    val matches = desired.contentEquals(actual)
+                    MiniSessionExit.finish(verifyTransport,reconnectWaitMs=0)
+                    if(!matches) throw IOException("Post-exit read-back differs from uploaded image. Backups retained.")
+                    android.util.Log.i("ChirpBluetooth","[SESSION VERIFIED] Post-exit reconnect image matches. Manual power-cycle verification pending.")
+                    onProgress(1f,"[SESSION VERIFIED] Power-cycle radio, then Download to verify persistence.")
+                } finally {
+                    verifyTransport.close()
+                }
                 return@withContext
             }
             performChirpHandshake(transport, radio) { line -> onProgress(0.16f, line) }

@@ -456,7 +456,7 @@ class ChirpViewModel(
                     errorReason = "",
                     lastFailedAction = ""
                 )
-                _statusBanner.value = "Downloaded ${downloadedChannels.size} channels from ${radio.model} via $transportMode."
+                _statusBanner.value = programmerManager.lastPersistenceMessage ?: "Downloaded ${downloadedChannels.size} channels from ${radio.model} via $transportMode."
             } catch (e: Exception) {
                 val msg = e.localizedMessage ?: "Hardware clone read failed."
                 _flashLogs.value = _flashLogs.value + "[ERROR] $msg"
@@ -530,7 +530,7 @@ class ChirpViewModel(
                     errorReason = "",
                     lastFailedAction = ""
                 )
-                _statusBanner.value = if (radio.model.contains("UV-5R Mini")) "Mini upload check completed. See transfer log for verification details." else "Uploaded ${channels.size} channels & settings to ${radio.model}!"
+                _statusBanner.value = if (radio.model.contains("UV-5R Mini")) "Upload reconnect check passed. Power-cycle radio, then Download to verify persistence." else "Uploaded ${channels.size} channels & settings to ${radio.model}!"
             } catch (e: Exception) {
                 val msg = e.localizedMessage ?: "Hardware clone write failed."
                 _flashLogs.value = _flashLogs.value + "[ERROR] $msg"
