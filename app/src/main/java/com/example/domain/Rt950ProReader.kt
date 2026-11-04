@@ -43,7 +43,7 @@ internal object Rt950ProReader {
             transport.writeBytes(ascii("M"))
             val model = expect(12, "model identification").toString(Charsets.US_ASCII).trim { it <= ' ' }
             val normalized = model.uppercase().filter { it.isLetterOrDigit() }
-            if (!normalized.contains("950PRO")) throw IOException("Unexpected RT-950 Pro identifier: $model")
+            if (normalized !in setOf("RT950", "RT950PRO", "RT950PROBLE")) throw IOException("Unexpected RT-950 Pro identifier: $model")
             progress(0.12f, "[RT-950 PRO] Identified $model")
             // Selector 0x10 uses byte 5 as the table index. Index 1 selects CO 7.
             val init = ByteArray(25)
@@ -60,6 +60,9 @@ internal object Rt950ProReader {
                     val request = byteArrayOf(command.toByte(), (address shr 8).toByte(), address.toByte(), 0x80.toByte())
                     transport.writeBytes(request)
                     val reply = expect(132, "read %02X:%04X".format(command, address))
+                    if (!reply.copyOfRange(0, 4).contentEquals(request)) {
+                        throw IOException("Unexpected RT-950 Pro response header at %02X:%04X.".format(command, address))
+                    }
                     for (index in 0 until 128) {
                         val value = reply[index + 4].toInt() and 255
                         val k = key[index % 4].toInt()
