@@ -1248,7 +1248,6 @@ private fun HardwareTransferModal(
                 },
                 enabled = !isFlashing &&
                     (selectedRadio.id != "radtel_rt950_pro" || isDownload || transport == "USB OTG Serial") &&
-                    (selectedRadio.id != "baofeng_uv5_mini" || isDownload || transport == "Bluetooth LE") &&
                     (if (transport == "Bluetooth LE") selectedBleAddress.isNotBlank() else selectedUsbDeviceName.isNotBlank()),
                 modifier = Modifier.testTag("confirm_hardware_transfer_btn")
             ) {

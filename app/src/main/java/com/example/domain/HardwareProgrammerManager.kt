@@ -1036,17 +1036,17 @@ class HardwareProgrammerManager(private val context: Context) {
             uploadRt950Settings(usbDeviceName, channels, settings, onProgress)
             return@withContext
         }
-        require(radio.id != "baofeng_uv5_mini" || transportMode == "Bluetooth LE") { "Mini cable support is download-only for now." }
+        val miniWired = radio.id == "baofeng_uv5_mini" && transportMode == "USB OTG Serial"
         if (radio.id == "baofeng_uv32") {
             val bluetooth = transportMode == "Bluetooth LE"
             uploadUv32(bluetooth, if (bluetooth) bleAddress else usbDeviceName, channels, settings, onProgress)
             return@withContext
         }
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
-        val transport = if (transportMode == "Bluetooth LE") {
+        var transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress) { line -> onProgress(0.08f, line) }
         } else {
-            openUsbOtgTransport(usbDeviceName) { line -> onProgress(0.08f, line) }
+            openUsbOtgTransport(usbDeviceName, if (miniWired) 115200 else 9600) { line -> onProgress(0.08f, line) }
         }
 
         try {
@@ -1059,7 +1059,13 @@ class HardwareProgrammerManager(private val context: Context) {
                     onProgress(1f,"[VERIFIED] No channel changes; no write commands sent.")
                     return@withContext
                 }
-                val blocks = MiniWritePlan.fullImage(desired)
+                if (miniWired) {
+                    // Wired clone begins with a fresh programming session after the backup.
+                    MiniSessionExit.finish(transport, reconnectWaitMs = 0)
+                    transport = openUsbOtgTransport(usbDeviceName, 115200) { onProgress(0.35f, it) }
+                    initializeColorClone(transport, false) { _, message -> onProgress(0.35f, message) }
+                }
+                val blocks = MiniWritePlan.fullImage(desired, if (miniWired) 64 else 128)
                 android.util.Log.i("ChirpBluetooth","Mini full-image upload: ${blocks.size} blocks")
                 for ((index,block) in blocks.withIndex()) {
                     val address = block.address
@@ -1070,7 +1076,7 @@ class HardwareProgrammerManager(private val context: Context) {
                         val k = key[i%4].toInt()
                         if(k != 32 && value != 0 && value != 255 && value != k && value != (k xor 255)) payload[i]=(value xor k).toByte()
                     }
-                    val frame = byteArrayOf(0x57,(address shr 8).toByte(),address.toByte(),0x80.toByte()) + payload
+                    val frame = byteArrayOf(0x57,(address shr 8).toByte(),address.toByte(),payload.size.toByte()) + payload
                     android.util.Log.i("ChirpBluetooth","Mini WRITE %04X".format(address))
                     transport.writeBytes(frame)
                     val ack = transport.readBytes(1,4000)
@@ -1080,7 +1086,7 @@ class HardwareProgrammerManager(private val context: Context) {
                 java.io.File(context.filesDir,"mini-pending-verification.bin").writeBytes(desired)
                 onProgress(0.60f,"[FINALIZE] Sending programming exit and waiting for radio...")
                 MiniSessionExit.finish(transport)
-                val verifyTransport = if(transportMode=="Bluetooth LE") openBleOrSppTransport(bleAddress) { android.util.Log.i("ChirpBluetooth",it) } else openUsbOtgTransport(usbDeviceName) { android.util.Log.i("ChirpBluetooth",it) }
+                val verifyTransport = if(transportMode=="Bluetooth LE") openBleOrSppTransport(bleAddress) { android.util.Log.i("ChirpBluetooth",it) } else openUsbOtgTransport(usbDeviceName, 115200) { android.util.Log.i("ChirpBluetooth",it) }
                 try {
                     readColorClone(verifyTransport, { pct, message -> onProgress(0.60f + pct * 0.39f,"[RECONNECT VERIFY] $message") })
                     val actual = checkNotNull(lastMiniImage)
