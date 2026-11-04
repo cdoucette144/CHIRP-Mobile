@@ -115,6 +115,7 @@ fun CodeplugTabScreen(
     onSelectRadio: (classSupportedRadioModel) -> Unit,
     onToggleRxOnly: (Int, Boolean) -> Unit,
     onBulkRxOnly: (Set<Int>, Boolean) -> Unit,
+    onSetScan: (Set<Int>, Boolean) -> Unit,
     onRenumber: (Int, Int) -> Boolean,
     onImportChannels: (List<RadioChannel>, Int) -> Unit,
     onMoveChannel: (Int, Int) -> Unit,
@@ -387,6 +388,25 @@ fun CodeplugTabScreen(
                     )
                 }
 
+                if (supportsZones) {
+                    Box {
+                        TextButton(onClick = { showZones = true }) {
+                            Text(if (selectedZone == 0) "All zones ▾" else "Zone $selectedZone ▾", style = MaterialTheme.typography.labelSmall)
+                        }
+                        DropdownMenu(expanded = showZones, onDismissRequest = { showZones = false }) {
+                            (0..10).forEach { zone ->
+                                val name = if (zone == 0) "All zones" else
+                                    zoneNames.getOrNull(zone - 1).orEmpty().let {
+                                        if (it.isBlank()) "Zone $zone" else "Zone $zone · $it"
+                                    }
+                                DropdownMenuItem(text = { Text(name) }, onClick = {
+                                    selectedZone = zone
+                                    showZones = false
+                                })
+                            }
+                        }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
                         onClick = { showOpenCodeplugDialog = true },
@@ -427,7 +447,7 @@ fun CodeplugTabScreen(
                 }
             }
 
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked=visibleChannels.isNotEmpty() && selectedNumbers.size==visibleChannels.size,onCheckedChange={ checked ->
                     selectedNumbers=if(checked) visibleChannels.map{it.number}.toSet() else emptySet()
                 })
@@ -436,33 +456,22 @@ fun CodeplugTabScreen(
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(enabled = visibleChannels.isNotEmpty() && !isFlashing, onClick = {
-                    onBulkRxOnly(visibleChannels.map { it.number }.toSet(), visibleChannels.any { !it.rxOnly })
-                }) { Text(if (visibleChannels.isNotEmpty() && visibleChannels.all { it.rxOnly }) "Clear RX" else "RX all",
-                    style = MaterialTheme.typography.labelSmall) }
-                if (supportsZones) {
-                    Box {
-                        TextButton(onClick = { showZones = true }) {
-                            Text(if (selectedZone == 0) "All zones ▾" else "Zone $selectedZone ▾", style = MaterialTheme.typography.labelSmall)
-                        }
-                        DropdownMenu(expanded = showZones, onDismissRequest = { showZones = false }) {
-                            (0..10).forEach { zone ->
-                                val name = if (zone == 0) "All zones" else
-                                    zoneNames.getOrNull(zone - 1).orEmpty().let {
-                                        if (it.isBlank()) "Zone $zone" else "Zone $zone · $it"
-                                    }
-                                DropdownMenuItem(text = { Text(name) }, onClick = {
-                                    selectedZone = zone
-                                    showZones = false
-                                })
-                            }
-                        }
-                    }
-                }
                 if (selectedNumbers.isNotEmpty()) {
                     TextButton(onClick = { showEditSelection = true }, enabled = !isFlashing) { Text("Edit") }
                     TextButton(onClick = { showDeleteSelection = true }, enabled = !isFlashing) { Text("Delete") }
                 }
+                val visibleSlots = visibleChannels.map { it.number }.toSet()
+                val allScan = visibleChannels.isNotEmpty() && visibleChannels.all { it.scanIncluded != false }
+                TextButton(
+                    onClick = { onSetScan(visibleSlots, !allScan) },
+                    enabled = visibleChannels.isNotEmpty() && !isFlashing,
+                    modifier = Modifier.width(64.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text(if (allScan) "Clear scan" else "Scan all", style = MaterialTheme.typography.labelSmall) }
+                TextButton(modifier = Modifier.width(56.dp), contentPadding = PaddingValues(0.dp), enabled = visibleChannels.isNotEmpty() && !isFlashing, onClick = {
+                    onBulkRxOnly(visibleChannels.map { it.number }.toSet(), visibleChannels.any { !it.rxOnly })
+                }) { Text(if (visibleChannels.isNotEmpty() && visibleChannels.all { it.rxOnly }) "Clear RX" else "RX all",
+                    style = MaterialTheme.typography.labelSmall) }
             }
             // Simple, clean Channel List with Drag-and-Drop & Single RxOnly Checkbox
             if (visibleChannels.isEmpty() && selectedZone != 0) {
@@ -562,7 +571,16 @@ fun CodeplugTabScreen(
                                 )
                             }
 
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(Modifier.width(64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Scan", style = MaterialTheme.typography.labelSmall)
+                                Checkbox(
+                                    checked = channel.scanIncluded != false,
+                                    onCheckedChange = { onSetScan(setOf(channel.number), it) },
+                                    enabled = !isFlashing,
+                                    modifier = Modifier.size(36.dp).testTag("scan_checkbox_${channel.number}")
+                                )
+                            }
+                            Column(Modifier.width(56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Rx Only", style = MaterialTheme.typography.labelSmall)
                                 Checkbox(
                                     checked = channel.rxOnly,

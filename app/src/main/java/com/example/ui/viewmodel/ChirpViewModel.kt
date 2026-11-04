@@ -393,6 +393,12 @@ class ChirpViewModel(
      *   have native RX-only (e.g. Baofeng UV-5R Mini), in which case it sets TX to FRS Ch 1 (462.5625 MHz @ Low Power).
      * - If unchecked: restores standard transmit / repeater offset capability on that channel.
      */
+    fun setCodeplugScan(slots: Set<Int>, included: Boolean) {
+        _codeplugChannels.value = _codeplugChannels.value.map { channel ->
+            if (channel.number in slots) channel.copy(scanIncluded = included) else channel
+        }
+    }
+
     fun setCodeplugRxOnly(slots: Set<Int>, enabled: Boolean) {
         val radio = _selectedRadio.value
         _codeplugChannels.value = _codeplugChannels.value.map { channel ->

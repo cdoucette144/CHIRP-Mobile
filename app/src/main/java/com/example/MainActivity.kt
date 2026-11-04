@@ -390,6 +390,7 @@ fun AuthenticatedFieldWorkspace(
                                     viewModel.selectRadioModelForCodeplug(radio)
                                 },
                                 onBulkRxOnly = viewModel::setCodeplugRxOnly,
+                                onSetScan = viewModel::setCodeplugScan,
                                 onRenumber = viewModel::renumberCodeplugChannel,
                                 onImportChannels = viewModel::importIntoCodeplug,
                                 onToggleRxOnly = { channelNum, rxOnlyChecked ->
