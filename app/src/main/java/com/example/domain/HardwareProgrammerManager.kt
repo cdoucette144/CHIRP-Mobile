@@ -259,6 +259,7 @@ class HardwareProgrammerManager(private val context: Context) {
     @SuppressLint("MissingPermission")
     private suspend fun openBleOrSppTransport(
         bleAddress: String,
+        configureUv32Baud: Boolean = false,
         onLog: (String) -> Unit
     ): RadioSerialTransport = withContext(Dispatchers.IO) {
         if (bleAddress.isBlank()) {
@@ -425,6 +426,36 @@ class HardwareProgrammerManager(private val context: Context) {
                 throw IOException("Bluetooth notification subscription failed. Reconnect the radio.")
             }
             onLog("[GATT CCCD] Subscribed to UART RX notifications (0x2902).")
+        }
+
+        if (configureUv32Baud) {
+            try {
+                val baudControl = connectedGatt.getService(finalWriteChar.service.uuid)
+                    ?.getCharacteristic(UUID.fromString("0000ff31-0000-1000-8000-00805f9b34fb"))
+                    ?: throw IOException("UV-32 Bluetooth baud control (FF31) is missing.")
+                if (baudControl.properties and BluetoothGattCharacteristic.PROPERTY_WRITE == 0) {
+                    throw IOException("UV-32 Bluetooth baud control does not support acknowledged writes.")
+                }
+                val baudBytes = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(115200).array()
+                writeAckSignal.clear()
+                @Suppress("DEPRECATION")
+                baudControl.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                @Suppress("DEPRECATION")
+                baudControl.value = baudBytes
+                @Suppress("DEPRECATION")
+                val started = connectedGatt.writeCharacteristic(baudControl)
+                if (!started) throw IOException("Could not start the UV-32 Bluetooth baud setup.")
+                val status = writeAckSignal.poll(2500, TimeUnit.MILLISECONDS)
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    throw IOException("UV-32 Bluetooth baud setup failed (status=$status).")
+                }
+                android.util.Log.i("ChirpBluetooth", "UV-32 FF31 accepted 00 C2 01 00 (115200 baud)")
+                onLog("[UV-32] Bluetooth bridge configured for 115200 baud.")
+            } catch (error: Exception) {
+                connectedGatt.disconnect()
+                connectedGatt.close()
+                throw error
+            }
         }
 
         delay(500)
@@ -781,13 +812,17 @@ class HardwareProgrammerManager(private val context: Context) {
         if (uv32 && transportMode != "Bluetooth LE") throw IOException("Use Bluetooth for the UV-32 test download.")
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
-            openBleOrSppTransport(bleAddress) { line -> onProgress(0.08f, line) }
+            openBleOrSppTransport(bleAddress, configureUv32Baud = uv32) { line -> onProgress(0.08f, line) }
         } else {
             openUsbOtgTransport(usbDeviceName) { line -> onProgress(0.08f, line) }
         }
 
         try {
-            if (uv32) return@withContext readColorClone(transport, onProgress, uv32 = true)
+            if (uv32) {
+                val channels = readColorClone(transport, onProgress, uv32 = true)
+                MiniSessionExit.finish(transport, reconnectWaitMs = 0)
+                return@withContext channels
+            }
             if (radio.model.contains("UV-5R Mini")) {
                 lastPersistenceMessage = null
                 val result = readColorClone(transport,onProgress)
@@ -1037,7 +1072,10 @@ class HardwareProgrammerManager(private val context: Context) {
         }
         val firmware = exchange(byteArrayOf(0x46), 16, "firmware identification")
         onProgress(0.10f, "[$model IDENT] " + firmware.joinToString(" ") { "%02X".format(it) })
-        exchange(byteArrayOf(0x4d), if (uv32) 7 else 15, "model identification")
+        val modelId = exchange(byteArrayOf(0x4d), if (uv32) 7 else 15, "model identification")
+        if (uv32 && modelId.toString(Charsets.US_ASCII) != "UV32PRO") {
+            throw IOException("Unexpected UV-32 model reply: " + modelId.joinToString(" ") { "%02X".format(it) })
+        }
         val init = byteArrayOf(0x53,0x45,0x4e,0x44,0x21,0x05,0x0d,0x01,0x01,0x01,0x04,0x11,0x08,0x05,0x0d,0x0d,0x01,0x11,0x0f,0x09,0x12,0x09,0x10,0x04,0x00)
         if (exchange(init, 1, "session initialization")[0] != 0x06.toByte()) throw IOException("$model session initialization rejected.")
         }
