@@ -898,7 +898,7 @@ private fun CategoryChannelPickerView(
 ) {
     var channelSearch by remember(groups) { mutableStateOf("") }
     val allAvailable = remember(groups) {
-        groups.flatMap { grp -> grp.channels.map { ch -> "${grp.id}_${ch.name}_${ch.rxFreqHz}" to ch } }
+        groups.flatMap { grp -> grp.channels.map { ch -> "${grp.id}_${ch.number}_${ch.name}_${ch.rxFreqHz}" to ch } }
     }
     fun eligible(ch: RadioChannel): Boolean {
         if(!selectedRadio.model.contains("UV-5R Mini")) return true
@@ -927,7 +927,7 @@ private fun CategoryChannelPickerView(
         ) {
             TextButton(
                 onClick = {
-                    if (selectedKeys.size == eligibleAvailable.size) {
+                    if (selectedKeys.isNotEmpty()) {
                         selectedKeys.clear()
                     } else {
                         selectedKeys.clear()
@@ -935,7 +935,7 @@ private fun CategoryChannelPickerView(
                     }
                 }
             ) {
-                Text(if (selectedKeys.size == eligibleAvailable.size) "Deselect All" else "Select compatible (${eligibleAvailable.size})")
+                Text(if (selectedKeys.isNotEmpty()) "Deselect All" else "Select compatible (${eligibleAvailable.size})")
             }
 
             Button(
@@ -979,8 +979,8 @@ private fun CategoryChannelPickerView(
                     }
                 }
 
-                items(group.channels.filter { channelSearch.isBlank() || it.name.contains(channelSearch,true) || it.notes.contains(channelSearch,true) || it.rxFreqMhzString.contains(channelSearch) }, key = { "${group.id}_${it.name}_${it.rxFreqHz}" }) { ch ->
-                    val key = "${group.id}_${ch.name}_${ch.rxFreqHz}"
+                items(group.channels.filter { channelSearch.isBlank() || it.name.contains(channelSearch,true) || it.notes.contains(channelSearch,true) || it.rxFreqMhzString.contains(channelSearch) }, key = { "${group.id}_${it.number}_${it.name}_${it.rxFreqHz}" }) { ch ->
+                    val key = "${group.id}_${ch.number}_${ch.name}_${ch.rxFreqHz}"
                     val isChecked = key in selectedKeys
                     Surface(
                         modifier = Modifier
