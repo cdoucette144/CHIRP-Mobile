@@ -1029,7 +1029,12 @@ class HardwareProgrammerManager(private val context: Context) {
         if (initialize) {
         transport.clearRxBuffer()
         val ack = exchange("PROGRAMCOLORPROU".toByteArray(Charsets.US_ASCII), 1, "program handshake")
-        if (ack[0] != 0x06.toByte()) throw IOException("$model rejected program handshake.")
+        if (ack[0] != 0x06.toByte()) {
+            val reply = "0x%02X".format(ack[0].toInt() and 0xff)
+            val reason = "$model rejected the programming handshake (reply $reply, expected 0x06)."
+            android.util.Log.w("ChirpBluetooth", reason)
+            throw IOException(reason)
+        }
         val firmware = exchange(byteArrayOf(0x46), 16, "firmware identification")
         onProgress(0.10f, "[$model IDENT] " + firmware.joinToString(" ") { "%02X".format(it) })
         exchange(byteArrayOf(0x4d), if (uv32) 7 else 15, "model identification")
