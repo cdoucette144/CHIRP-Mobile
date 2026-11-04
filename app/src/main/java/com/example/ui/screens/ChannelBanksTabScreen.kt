@@ -125,6 +125,7 @@ fun ChannelBanksTabScreen(
     when {
         showRadioReferenceBrowser -> {
             RadioReferenceHierarchicalBrowser(
+                selectedRadio = selectedRadio,
                 onBack = { showRadioReferenceBrowser = false },
                 onImportCsv = { csvPicker.launch(arrayOf("text/*","application/csv","application/octet-stream")) },
                 onImportSelectedChannels = { importedList, sourceLabel ->
@@ -600,6 +601,7 @@ private fun ChannelBankEditorView(
 
 @Composable
 private fun RadioReferenceHierarchicalBrowser(
+    selectedRadio: classSupportedRadioModel,
     onBack: () -> Unit,
     onImportCsv: () -> Unit,
     onImportSelectedChannels: (List<RadioChannel>, String) -> Unit
@@ -678,6 +680,7 @@ private fun RadioReferenceHierarchicalBrowser(
             selectedNationalGroup != null -> {
                 val group = selectedNationalGroup!!
                 CategoryChannelPickerView(
+                    selectedRadio = selectedRadio,
                     groups = listOf(group),
                     sourceLabel = group.title,
                     onImport = onImportSelectedChannels
@@ -688,6 +691,7 @@ private fun RadioReferenceHierarchicalBrowser(
             selectedCounty != null -> {
                 val county = selectedCounty!!
                 CategoryChannelPickerView(
+                    selectedRadio = selectedRadio,
                     groups = county.categories,
                     sourceLabel = county.name,
                     onImport = onImportSelectedChannels
@@ -887,6 +891,7 @@ private fun RadioReferenceHierarchicalBrowser(
 
 @Composable
 private fun CategoryChannelPickerView(
+    selectedRadio: classSupportedRadioModel,
     groups: List<AnalogCategoryGroup>,
     sourceLabel: String,
     onImport: (List<RadioChannel>, String) -> Unit
@@ -894,13 +899,25 @@ private fun CategoryChannelPickerView(
     val allAvailable = remember(groups) {
         groups.flatMap { grp -> grp.channels.map { ch -> "${grp.id}_${ch.name}_${ch.rxFreqHz}" to ch } }
     }
-    val selectedKeys = remember(groups) {
+    fun eligible(ch: RadioChannel): Boolean {
+        if(!selectedRadio.model.contains("UV-5R Mini")) return true
+        val f=ch.rxFreqHz
+        val supported=if(ch.mode=="AM") f in 108000000L..135999999L else
+            f in 136000000L..174000000L || f in 350000000L..390000000L || f in 400000000L..520000000L
+        return supported && ch.name.length<=12
+    }
+    val eligibleAvailable = allAvailable.filter { eligible(it.second) }
+    val selectedKeys = remember(groups,selectedRadio.id) {
         mutableStateListOf<String>().apply {
-            addAll(allAvailable.map { it.first })
+            addAll(eligibleAvailable.map { it.first })
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        if(eligibleAvailable.size!=allAvailable.size) Text(
+            "${allAvailable.size} source entries. ${allAvailable.size-eligibleAvailable.size} need a shorter radio alias or a different receive band; they are not selected by default.",
+            color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(8.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -908,15 +925,15 @@ private fun CategoryChannelPickerView(
         ) {
             TextButton(
                 onClick = {
-                    if (selectedKeys.size == allAvailable.size) {
+                    if (selectedKeys.size == eligibleAvailable.size) {
                         selectedKeys.clear()
                     } else {
                         selectedKeys.clear()
-                        selectedKeys.addAll(allAvailable.map { it.first })
+                        selectedKeys.addAll(eligibleAvailable.map { it.first })
                     }
                 }
             ) {
-                Text(if (selectedKeys.size == allAvailable.size) "Deselect All" else "Select All (${allAvailable.size})")
+                Text(if (selectedKeys.size == eligibleAvailable.size) "Deselect All" else "Select compatible (${eligibleAvailable.size})")
             }
 
             Button(
