@@ -26,7 +26,9 @@ internal object Rt950ProReader {
     fun settingsBlocks(original: ByteArray, desired: ByteArray): Map<Int, ByteArray> =
         mapOf(0x9000 to 0x7d00, 0xc000 to 0x8500, 0xc080 to 0x8580).mapNotNull { (address, offset) ->
             val data = desired.copyOfRange(offset, offset + 128)
-            if (data.contentEquals(original.copyOfRange(offset, offset + 128))) null else address to data
+            val zoneWrite = address != 0x9000 &&
+                !desired.copyOfRange(0x8500, 0x8600).contentEquals(original.copyOfRange(0x8500, 0x8600))
+            if (zoneWrite || !data.contentEquals(original.copyOfRange(offset, offset + 128))) address to data else null
         }.toMap()
 
     suspend fun download(transport: RadioSerialTransport, progress: (Float, String) -> Unit): ByteArray =
@@ -173,6 +175,7 @@ internal object Rt950ProReader {
         Setting(9, "DTMF Mode", listOf("Off", "DT-ST", "ANI-ID", "DTMF")),
         Setting(10, "Scan Resume", listOf("Time", "Carrier", "Search")),
         Setting(11, "PTT ID", listOf("Off", "Start", "End", "Both")),
+        Setting(12, "PTT ID Delay", levels),
         Setting(13, "Display A", displays),
         Setting(14, "Display B", displays),
         Setting(15, "Display C", displays),
@@ -185,6 +188,8 @@ internal object Rt950ProReader {
         Setting(27, "Keypad Lock", offOn),
         Setting(28, "Power-on Display", listOf("Full", "Message", "Voltage")),
         Setting(32, "VOX Delay", levels),
+        Setting(33, "Menu Timeout", levels),
+        Setting(37, "Weather Channel", levels),
         Setting(0x26, "Channel Divide", listOf("Zones", "All Channels")),
         Setting(0x28, "VOX Switch", offOn)
     )
