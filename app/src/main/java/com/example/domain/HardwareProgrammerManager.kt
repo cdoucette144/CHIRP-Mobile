@@ -132,7 +132,7 @@ class HardwareProgrammerManager(private val context: Context) {
     fun scanUsbOtgDevices(): List<DetectedUsbCable> {
         val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return emptyList()
         val deviceList: HashMap<String, UsbDevice> = usbManager.deviceList ?: return emptyList()
-        return deviceList.values.map { device ->
+        return deviceList.values.filter { it.vendorId in setOf(0x0403, 0x1a86, 0x067b, 0x10c4) }.map { device ->
             val chipset = identifySerialChipset(device.vendorId, device.productId)
             DetectedUsbCable(
                 deviceName = device.deviceName,
@@ -146,7 +146,7 @@ class HardwareProgrammerManager(private val context: Context) {
 
     fun requestUsbPermission(deviceName: String): Boolean {
         val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return false
-        val device = usbManager.deviceList?.get(deviceName) ?: usbManager.deviceList?.values?.firstOrNull() ?: return false
+        val device = usbManager.deviceList[deviceName] ?: return false
         if (usbManager.hasPermission(device)) return true
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -165,7 +165,7 @@ class HardwareProgrammerManager(private val context: Context) {
 
     private fun identifySerialChipset(vid: Int, pid: Int): String = when (vid) {
         0x0403 -> "FTDI FT232R / FT231X K-Plug Cable"
-        0x1A86 -> "QinHeng CH340 / CH341 USB-Serial"
+        0x1A86 -> if (pid == 0x55d3) "WCH CH343 USB serial" else "QinHeng CH340 / CH341 USB-Serial"
         0x067B -> "Prolific PL2303 Programming Cable"
         0x10C4 -> "Silicon Labs CP2102 / CP210x"
         else -> String.format(Locale.US, "USB Serial Adapter (%04X:%04X)", vid, pid)
@@ -643,7 +643,7 @@ class HardwareProgrammerManager(private val context: Context) {
         if (devices.isNullOrEmpty()) {
             throw IOException("No USB OTG programming cable detected. Connect your K-Plug USB OTG cable and try again.")
         }
-        val device = devices[usbDeviceName] ?: devices.values.first()
+        val device = devices[usbDeviceName] ?: throw IOException("Selected cable disconnected. Reconnect it and tap Refresh USB.")
         if (!usbManager.hasPermission(device)) {
             requestUsbPermission(device.deviceName)
             throw IOException("USB permission requested for ${identifySerialChipset(device.vendorId, device.productId)}. Approve the system prompt and tap again.")
@@ -689,8 +689,19 @@ class HardwareProgrammerManager(private val context: Context) {
         }
 
         try {
-            if (baud == 115200) {
-                require(device.vendorId == 0x0403) { "Select an FTDI cable for 115200 baud programming." }
+            if (device.vendorId == 0x1a86 && device.productId == 0x55d3) {
+                val control = (0 until device.interfaceCount).map(device::getInterface)
+                    .firstOrNull { it.interfaceClass == UsbConstants.USB_CLASS_COMM && it.interfaceSubclass == 2 }
+                    ?: throw IOException("CH343 CDC control interface missing.")
+                if (!connection.claimInterface(control, true)) throw IOException("Could not claim CH343 control interface.")
+                val lineCoding = ByteBuffer.allocate(7).order(ByteOrder.LITTLE_ENDIAN)
+                    .putInt(baud).put(0).put(0).put(8).array()
+                if (connection.controlTransfer(0x21, 0x20, 0, control.id, lineCoding, lineCoding.size, 500) != lineCoding.size ||
+                    connection.controlTransfer(0x21, 0x22, 3, control.id, null, 0, 500) < 0) {
+                    throw IOException("CH343 serial setup failed.")
+                }
+            } else if (baud == 115200) {
+                require(device.vendorId == 0x0403) { "Select an FTDI or CH343 cable for 115200 baud programming." }
                 for ((request, value) in listOf(0 to 0, 3 to 26, 4 to 8)) {
                     if (connection.controlTransfer(0x40, request, value, 0, null, 0, 500) < 0) {
                         throw IOException("FTDI serial setup failed (request $request).")

@@ -1174,7 +1174,7 @@ private fun HardwareTransferModal(
                         TextButton(
                             onClick = {
                                 usbCables = programmerManager.scanUsbOtgDevices()
-                                if (selectedUsbDeviceName.isBlank()) {
+                                if (usbCables.none { it.deviceName == selectedUsbDeviceName }) {
                                     selectedUsbDeviceName = usbCables.firstOrNull()?.deviceName ?: ""
                                 }
                             }
