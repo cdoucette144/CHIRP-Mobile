@@ -126,7 +126,7 @@ enum class MiniMenuSetting(val offset: Int, val label: String, val options: List
 
     companion object {
         fun read(image: ByteArray): Map<MiniMenuSetting, Int> = buildMap {
-            for (setting in entries) {
+            for (setting in MiniMenuSetting.entries) {
                 val value = image[setting.offset].toInt() and 255
                 if (value in setting.options.indices) put(setting, value)
             }
