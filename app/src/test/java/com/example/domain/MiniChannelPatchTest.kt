@@ -8,6 +8,18 @@ class MiniChannelPatchTest {
     private val channel = RadioChannel(number=1,name="TEST",rxFreqHz=146520000,txFreqHz=146520000,power=PowerLevel.LOW)
     private fun image() = ByteArray(0x8240) { 0xff.toByte() }
 
+    @Test fun optionalChannelFlagsUseOnlyMappedBits() {
+        val base=MiniChannelPatch.apply(image(),listOf(channel))
+        val patched=MiniChannelPatch.apply(base,listOf(channel.copy(scanIncluded=false,busyChannelLockout=true,fhssPrivacy=true,pttId=3)))
+        assertEquals(0,patched[15].toInt() and 4)
+        assertEquals(9,patched[15].toInt() and 9)
+        assertEquals(3,patched[13].toInt())
+        for(i in base.indices) if(i!=13 && i!=15) assertEquals(base[i],patched[i])
+    }
+    @Test fun channelOptionsSurviveLocalSave() {
+        val ch=channel.copy(scanIncluded=false,busyChannelLockout=true,fhssPrivacy=true,pttId=2)
+        assertEquals(ch,com.example.data.model.RadioChannel.fromSpecString(ch.toSpecString(),1))
+    }
     @Test fun preservesUnmodelledMemoryAndFlags() {
         val base = MiniChannelPatch.apply(image(),listOf(channel))
         base[12]=0x53; base[13]=0x23; base[16]=0x12; base[0x8100]=0x47

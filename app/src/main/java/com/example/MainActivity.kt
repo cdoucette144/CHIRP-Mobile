@@ -358,6 +358,8 @@ fun AuthenticatedFieldWorkspace(
                                 onDeleteChannel = { chNum ->
                                     viewModel.deleteCodeplugChannel(chNum)
                                 },
+                                onDeleteChannels = { numbers -> viewModel.deleteCodeplugChannels(numbers) },
+                                onEditChannels = { numbers, mode, power -> viewModel.editCodeplugChannels(numbers,mode,power) },
                                 onDownloadFromRadio = { mgr, radio, mode, bleAddr, usbName ->
                                     viewModel.downloadFromRadioIntoCodeplug(mgr, radio, mode, bleAddr, usbName)
                                 },
@@ -421,11 +423,11 @@ fun AuthenticatedFieldWorkspace(
 
         AlertDialog(
             onDismissRequest = { showSettingsModal = false },
-            title = { Text("Settings & RadioReference Login") },
+            title = { Text("Settings") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "RADIOREFERENCE.COM ACCOUNT (OPTIONAL)",
+                        text = "RADIOREFERENCE CSV IMPORT",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -433,7 +435,7 @@ fun AuthenticatedFieldWorkspace(
                         text = if (rrConnected) {
                             "Connected as '$rrUsername' for live SOAP/CSV imports."
                         } else {
-                            "Built-in National & 50-State Analog Directory works offline. Sign in if using a personal RadioReference subscription."
+                            "Use Channel Banks → Import channels / CSV. Live RadioReference sign-in is not implemented."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (rrConnected) RxSafeGreen else MaterialTheme.colorScheme.onSurfaceVariant
@@ -466,7 +468,7 @@ fun AuthenticatedFieldWorkspace(
                             .fillMaxWidth()
                             .testTag("save_rr_login_button")
                     ) {
-                        Text("Save RadioReference Login")
+                        Text("Save username")
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))

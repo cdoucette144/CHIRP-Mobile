@@ -1079,7 +1079,11 @@ class HardwareProgrammerManager(private val context: Context) {
                 offsetHz=abs(tx-rx),rxTone=tone(offset+8),txTone=tone(offset+10),
                 mode=if(rx in 108000000L..135999999L) "AM" else if((bytes[offset+15].toInt() and 0x40)!=0) "FM" else "NFM",
                 power=if((bytes[offset+14].toInt() and 3)==1) PowerLevel.LOW else PowerLevel.HIGH,
-                rxOnly=off,notes="Mini read-only download; complete raw backup retained on device.")
+                rxOnly=off,notes="Mini download; complete raw backup retained on device.",
+                scanIncluded=(bytes[offset+15].toInt() and 4)!=0,
+                busyChannelLockout=(bytes[offset+15].toInt() and 8)!=0,
+                fhssPrivacy=(bytes[offset+15].toInt() and 1)!=0,
+                pttId=(bytes[offset+13].toInt() and 255).takeIf { it in 0..3 })
         }
         onProgress(1f,"[MINI COMPLETE] ${channels.size} channels; backup ${file.name}.")
         return channels

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.SettingsInputAntenna
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -87,6 +88,30 @@ fun ChannelBanksTabScreen(
     var showCustomChannelModal by remember { mutableStateOf(false) }
     var editingDraftChannelIndex by remember { mutableStateOf<Int?>(null) }
     var showRadioReferenceBrowser by remember { mutableStateOf(false) }
+    var importMessage by remember { mutableStateOf<String?>(null) }
+    val importContext = androidx.compose.ui.platform.LocalContext.current
+    val csvPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if(uri!=null) {
+            try {
+                val text=importContext.contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()} ?: error("Unable to read CSV")
+                val result=com.example.domain.RadioReferenceCsv.parse(text)
+                require(result.channels.isNotEmpty()) { "No supported analog channels found" }
+                draftChannels.addAll(result.channels.mapIndexed { index,ch -> ch.copy(number=draftChannels.size+index+1) })
+                if(bankNameInput.isBlank()) bankNameInput="Imported analog channels"
+                bankRegionSummary="User-supplied conventional CSV"
+                isEditingBank=true
+                showRadioReferenceBrowser=false
+                importMessage="Imported ${result.channels.size} analog channels; skipped ${result.skipped} digital or invalid rows. Alpha tags are preserved exactly."
+            } catch(error:Exception) { importMessage=error.message ?: "CSV import failed" }
+        }
+    }
+    if(importMessage!=null) {
+        AlertDialog(onDismissRequest={importMessage=null},title={Text("CSV import")},text={Text(importMessage ?: "")},
+            confirmButton={TextButton(onClick={importMessage=null}){Text("OK")}})
+    }
+
     var selectedBankIdInList by remember { mutableStateOf<String?>(null) }
 
     BackHandler(enabled = showRadioReferenceBrowser || isEditingBank) {
@@ -101,6 +126,7 @@ fun ChannelBanksTabScreen(
         showRadioReferenceBrowser -> {
             RadioReferenceHierarchicalBrowser(
                 onBack = { showRadioReferenceBrowser = false },
+                onImportCsv = { csvPicker.launch(arrayOf("text/*","application/csv","application/octet-stream")) },
                 onImportSelectedChannels = { importedList, sourceLabel ->
                     val startNum = draftChannels.size + 1
                     importedList.forEachIndexed { idx, ch ->
@@ -493,7 +519,7 @@ private fun ChannelBankEditorView(
             ) {
                 Icon(Icons.Default.SettingsInputAntenna, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Import RadioReference")
+                Text("Import channels / CSV")
             }
         }
 
@@ -575,6 +601,7 @@ private fun ChannelBankEditorView(
 @Composable
 private fun RadioReferenceHierarchicalBrowser(
     onBack: () -> Unit,
+    onImportCsv: () -> Unit,
     onImportSelectedChannels: (List<RadioChannel>, String) -> Unit
 ) {
     // Drill-down state:
@@ -601,6 +628,12 @@ private fun RadioReferenceHierarchicalBrowser(
             .padding(16.dp)
             .testTag("rr_hierarchical_browser")
     ) {
+        Text("Dated source snapshots and conventional CSV imports. Police, Fire and EMS are shown together. No live RadioReference connection.",
+            modifier=Modifier.padding(12.dp),color=MaterialTheme.colorScheme.error)
+        Button(onClick=onImportCsv,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp)) {
+            Text("Import RadioReference CSV • all agencies together")
+        }
+
         // Header Breadcrumb Bar
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -623,7 +656,7 @@ private fun RadioReferenceHierarchicalBrowser(
                     selectedNationalGroup != null -> selectedNationalGroup!!.title
                     selectedCounty != null -> "${selectedState?.name} > ${selectedCounty!!.name}"
                     selectedState != null -> "${selectedState!!.name} — Select County"
-                    else -> "Import from RadioReference (Analog Only)"
+                    else -> "Offline directory / CSV import"
                 }
                 Text(
                     text = title,
@@ -792,7 +825,7 @@ private fun RadioReferenceHierarchicalBrowser(
                     item {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "ALL 50 STATES (STATE > COUNTY > ANALOG AGENCIES)",
+                            text = "AVAILABLE COUNTY SNAPSHOTS",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )

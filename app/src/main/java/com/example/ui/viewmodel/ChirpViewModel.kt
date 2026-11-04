@@ -203,7 +203,7 @@ class ChirpViewModel(
             .putBoolean("rr_connected", username.isNotBlank() && password.isNotBlank())
             .apply()
         _rrUsername.value = username.trim()
-        _rrConnected.value = username.isNotBlank() && password.isNotBlank()
+        _rrConnected.value = false
         _statusBanner.value = if (_rrConnected.value) {
             "RadioReference account '${username.trim()}' linked for analog imports."
         } else {
@@ -224,7 +224,7 @@ class ChirpViewModel(
                 channelSpecs = (0 until channels.length()).map { channels.getString(it) })
         }
         _rrUsername.value = prefs.getString("rr_username", "") ?: ""
-        _rrConnected.value = prefs.getBoolean("rr_connected", false)
+        _rrConnected.value = false
     }
 
     // --- TAB 1: CHANNEL BANKS OPERATIONS ---
@@ -392,6 +392,14 @@ class ChirpViewModel(
         }
         _codeplugChannels.value = current.mapIndexed { idx, ch -> ch.copy(number = idx + 1) }
         _isCodeplugLoaded.value = true
+    }
+
+    fun deleteCodeplugChannels(numbers: Set<Int>) {
+        _codeplugChannels.value = com.example.domain.ChannelBatchEdit.delete(_codeplugChannels.value,numbers)
+    }
+
+    fun editCodeplugChannels(numbers: Set<Int>, mode: String?, power: PowerLevel?) {
+        _codeplugChannels.value = com.example.domain.ChannelBatchEdit.update(_codeplugChannels.value,numbers,mode,power)
     }
 
     fun deleteCodeplugChannel(channelNumber: Int) {

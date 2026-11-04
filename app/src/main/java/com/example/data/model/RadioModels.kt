@@ -66,7 +66,11 @@ data class RadioChannel(
     val mode: String = "FM",
     val power: PowerLevel = PowerLevel.LOW,
     val rxOnly: Boolean = false,
-    val notes: String = ""
+    val notes: String = "",
+    val scanIncluded: Boolean? = null,
+    val busyChannelLockout: Boolean? = null,
+    val fhssPrivacy: Boolean? = null,
+    val pttId: Int? = null
 ) {
     val rxFreqMhzString: String
         get() = String.format(Locale.US, "%.4f", rxFreqHz / 1_000_000.0)
@@ -93,8 +97,12 @@ data class RadioChannel(
             mode,
             power.code,
             rxModeFlag,
-            safeNotes
-        ).joinToString("|").take(256)
+            safeNotes,
+            scanIncluded?.toString() ?: "",
+            busyChannelLockout?.toString() ?: "",
+            fhssPrivacy?.toString() ?: "",
+            pttId?.toString() ?: ""
+        ).joinToString("|")
     }
 
     companion object {
@@ -131,7 +139,11 @@ data class RadioChannel(
                 mode = mode,
                 power = power,
                 rxOnly = rxOnly,
-                notes = notes
+                notes = notes,
+                scanIncluded = parts.getOrNull(12)?.toBooleanStrictOrNull(),
+                busyChannelLockout = parts.getOrNull(13)?.toBooleanStrictOrNull(),
+                fhssPrivacy = parts.getOrNull(14)?.toBooleanStrictOrNull(),
+                pttId = parts.getOrNull(15)?.toIntOrNull()
             )
         }
     }

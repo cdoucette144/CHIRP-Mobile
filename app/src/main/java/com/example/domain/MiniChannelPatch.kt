@@ -53,6 +53,13 @@ object MiniChannelPatch {
             val oldLow = (original[at+14].toInt() and 3) == 1
             if (original[at] == 0xff.toByte() || oldLow != (ch.power == PowerLevel.LOW)) result[at+14] = ((result[at+14].toInt() and 0xfc) or if(ch.power == PowerLevel.LOW) 1 else 0).toByte()
             if(ch.mode != "AM") result[at+15] = ((result[at+15].toInt() and 0xbf) or if(ch.mode == "FM") 0x40 else 0).toByte()
+            fun flag(mask: Int, enabled: Boolean?) {
+                if(enabled!=null) result[at+15] = ((result[at+15].toInt() and mask.inv()) or if(enabled) mask else 0).toByte()
+            }
+            flag(4,ch.scanIncluded)
+            flag(8,ch.busyChannelLockout)
+            flag(1,ch.fhssPrivacy)
+            ch.pttId?.let { require(it in 0..3) { "Invalid PTT ID mode" };result[at+13]=it.toByte() }
             val oldName = original.copyOfRange(at+20,at+32).takeWhile { it != 0.toByte() && it != 0xff.toByte() }.map { (it.toInt() and 255).toChar() }.joinToString("").trim().ifBlank { "CH $slot" }
             if (ch.name != oldName || original[at] == 0xff.toByte()) {
                 result.fill(0xff.toByte(),at+20,at+32)

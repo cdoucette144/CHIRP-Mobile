@@ -155,92 +155,86 @@ object AnalogRadioReferenceDirectory {
         )
     )
 
-    // Complete Plymouth County, Massachusetts (All 27 towns, mutual aid, strictly Analog FM/NFM, P25 excluded)
+    // Observed conventional analog public-safety entries; preserve source alpha tags.
+    // Source: https://www.radioreference.com/db/browse/ctid/1224, fetched 2026-11-03.
+    // Monitor template uses TX-capable FRS1 low-power fallback, not native inhibit.
     private val plymouthCountyMa = CountyDirectory(
         name = "Plymouth County",
-        categories = listOf(
-            AnalogCategoryGroup(
-                id = "ma_plym_fire_control_ma",
-                title = "Plymouth County Fire Control & Mutual Aid",
-                subtitle = "Countywide Dispatch, Inter-Agency Mutual Aid & Firegrounds (NFM)",
-                channels = listOf(
-                    RadioChannel(1, "PLY CTY CTL", 483475000L, 486475000L, DuplexMode.PLUS, 3000000L, "141.3", "141.3", "NFM", PowerLevel.HIGH, false, "PCC Main County Dispatch"),
-                    RadioChannel(2, "FIRE MA 1", 453450000L, 458450000L, DuplexMode.PLUS, 5000000L, "D306N", "D306N", "NFM", PowerLevel.HIGH, false, "Plymouth County Mutual Aid 1"),
-                    RadioChannel(3, "FIRE MA 2", 453750000L, 458750000L, DuplexMode.PLUS, 5000000L, "D506N", "D506N", "NFM", PowerLevel.HIGH, false, "Plymouth County Mutual Aid 2"),
-                    RadioChannel(4, "FIRE MA 3", 453950000L, 458950000L, DuplexMode.PLUS, 5000000L, "D606N", "D606N", "NFM", PowerLevel.HIGH, false, "Plymouth County Mutual Aid 3"),
-                    RadioChannel(5, "CNTY FG 1", 483100000L, 483100000L, DuplexMode.SIMPLEX, 0L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "County Fireground 1"),
-                    RadioChannel(6, "CNTY FG 2", 483200000L, 483200000L, DuplexMode.SIMPLEX, 0L, "114.8", "114.8", "NFM", PowerLevel.HIGH, false, "County Fireground 2"),
-                    RadioChannel(7, "CNTY FG 3", 483400000L, 483400000L, DuplexMode.SIMPLEX, 0L, "127.3", "127.3", "NFM", PowerLevel.HIGH, false, "County Fireground 3"),
-                    RadioChannel(8, "CNTY FG 5", 483775000L, 483775000L, DuplexMode.SIMPLEX, 0L, "156.7", "156.7", "NFM", PowerLevel.HIGH, false, "County Fireground 5"),
-                    RadioChannel(9, "CNTY FG 6", 483925000L, 483925000L, DuplexMode.SIMPLEX, 0L, "173.8", "173.8", "NFM", PowerLevel.HIGH, false, "County Fireground 6")
-                )
-            ),
-            AnalogCategoryGroup(
-                id = "ma_plym_town_fire_ems",
-                title = "Plymouth County Town Fire & EMS (Analog NFM)",
-                subtitle = "Halifax, Hanson, Hanover, Pembroke, Carver, Marshfield & More",
-                channels = listOf(
-                    RadioChannel(1, "HALIFAX FD", 453187500L, 458187500L, DuplexMode.PLUS, 5000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Halifax Fire Dispatch (WPSI480)"),
-                    RadioChannel(2, "HANSON FD 1", 483550000L, 486550000L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Hanson Fire Ch 1 Dispatch"),
-                    RadioChannel(3, "HANSON FD 2", 482925000L, 485925000L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Hanson Fire Ch 2 Ops"),
-                    RadioChannel(4, "HANOVER FD", 484400000L, 487400000L, DuplexMode.PLUS, 3000000L, "107.2", "107.2", "NFM", PowerLevel.HIGH, false, "Hanover Fire Operations"),
-                    RadioChannel(5, "PEMBROKE FD", 460287500L, 465287500L, DuplexMode.PLUS, 5000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Pembroke Fire Operations"),
-                    RadioChannel(6, "PLYMPTON FD", 453412500L, 458412500L, DuplexMode.PLUS, 5000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Plympton Fire Dispatch"),
-                    RadioChannel(7, "KINGSTON FD", 460600000L, 465600000L, DuplexMode.PLUS, 5000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Kingston Fire Operations (Analog)"),
-                    RadioChannel(8, "CARVER FD", 471250000L, 474250000L, DuplexMode.PLUS, 3000000L, "192.8", "192.8", "NFM", PowerLevel.HIGH, false, "Carver Fire Primary Repeater"),
-                    RadioChannel(9, "MIDDLEBORO F", 470700000L, 473700000L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Middleborough Fire Dispatch"),
-                    RadioChannel(10, "MIDDLBR FG", 470700000L, 470700000L, DuplexMode.SIMPLEX, 0L, "91.5", "91.5", "NFM", PowerLevel.HIGH, false, "Middleborough Fireground"),
-                    RadioChannel(11, "DUXBURY FD", 460575000L, 465575000L, DuplexMode.PLUS, 5000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Duxbury Fire Operations"),
-                    RadioChannel(12, "MARSHFLD FD", 453437500L, 458437500L, DuplexMode.PLUS, 5000000L, "141.3", "141.3", "NFM", PowerLevel.HIGH, false, "Marshfield Fire Operations"),
-                    RadioChannel(13, "BROCKTON F1", 154310000L, 154310000L, DuplexMode.SIMPLEX, 0L, "94.8", "94.8", "NFM", PowerLevel.HIGH, false, "Brockton Fire Dispatch (FD1)"),
-                    RadioChannel(14, "BROCKTON F2", 154145000L, 154145000L, DuplexMode.SIMPLEX, 0L, "94.8", "94.8", "NFM", PowerLevel.HIGH, false, "Brockton Fire Secondary (FD2)"),
-                    RadioChannel(15, "WHITMAN FD", 472400000L, 475400000L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Whitman Fire Operations"),
-                    RadioChannel(16, "ABINGTON FD", 482950000L, 485950000L, DuplexMode.PLUS, 3000000L, "D754N", "D754N", "NFM", PowerLevel.HIGH, false, "Abington Fire Dispatch"),
-                    RadioChannel(17, "ROCKLAND FD", 482675000L, 485675000L, DuplexMode.PLUS, 3000000L, "D754N", "D754N", "NFM", PowerLevel.HIGH, false, "Rockland Fire Operations"),
-                    RadioChannel(18, "BRIDGEWTR FD", 460525000L, 465525000L, DuplexMode.PLUS, 5000000L, "107.2", "107.2", "NFM", PowerLevel.HIGH, false, "Bridgewater Fire Operations"),
-                    RadioChannel(19, "W BRDGWTR FD", 453387500L, 458387500L, DuplexMode.PLUS, 5000000L, "107.2", "107.2", "NFM", PowerLevel.HIGH, false, "West Bridgewater Fire"),
-                    RadioChannel(20, "E BRDGWTR FD", 453250000L, 458250000L, DuplexMode.PLUS, 5000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "East Bridgewater Fire"),
-                    RadioChannel(21, "HINGHAM FD", 484375000L, 487375000L, DuplexMode.PLUS, 3000000L, "141.3", "141.3", "NFM", PowerLevel.HIGH, false, "Hingham Fire Operations"),
-                    RadioChannel(22, "HULL FD", 484325000L, 487325000L, DuplexMode.PLUS, 3000000L, "131.8", "131.8", "NFM", PowerLevel.HIGH, false, "Hull Fire Operations"),
-                    RadioChannel(23, "NORWELL FD", 453175000L, 458175000L, DuplexMode.PLUS, 5000000L, "203.5", "203.5", "NFM", PowerLevel.HIGH, false, "Norwell Fire Operations"),
-                    RadioChannel(24, "SCITUATE FD", 453375000L, 458375000L, DuplexMode.PLUS, 5000000L, "141.3", "141.3", "NFM", PowerLevel.HIGH, false, "Scituate Fire Operations"),
-                    RadioChannel(25, "WAREHAM FD", 453125000L, 458125000L, DuplexMode.PLUS, 5000000L, "118.8", "118.8", "NFM", PowerLevel.HIGH, false, "Wareham / Onset Fire Dispatch"),
-                    RadioChannel(26, "MATTAPOIS FD", 453075000L, 458075000L, DuplexMode.PLUS, 5000000L, "192.8", "192.8", "NFM", PowerLevel.HIGH, false, "Mattapoisett Fire Dispatch"),
-                    RadioChannel(27, "MARION FD", 453325000L, 458325000L, DuplexMode.PLUS, 5000000L, "107.2", "107.2", "NFM", PowerLevel.HIGH, false, "Marion Fire Operations"),
-                    RadioChannel(28, "ROCHESTR FD", 453275000L, 458275000L, DuplexMode.PLUS, 5000000L, "131.8", "131.8", "NFM", PowerLevel.HIGH, false, "Rochester Fire Operations"),
-                    RadioChannel(29, "LAKEVILLE FD", 470625000L, 473625000L, DuplexMode.PLUS, 3000000L, "114.8", "114.8", "NFM", PowerLevel.HIGH, false, "Lakeville Fire Operations"),
-                    RadioChannel(30, "CMED REG 5", 463075000L, 468075000L, DuplexMode.PLUS, 5000000L, "167.9", "167.9", "NFM", PowerLevel.HIGH, false, "Region V CMED Med 4"),
-                    RadioChannel(31, "BID PLYM MED", 463175000L, 468175000L, DuplexMode.PLUS, 5000000L, "167.9", "167.9", "NFM", PowerLevel.HIGH, false, "BID Plymouth Hospital Patch")
-                )
-            ),
-            AnalogCategoryGroup(
-                id = "ma_plym_police_analog",
-                title = "Plymouth County Law Enforcement (Analog Only)",
-                subtitle = "Conventional Analog Channels (Excludes P25: Halifax PD & Marshfield PD Omitted)",
-                channels = listOf(
-                    RadioChannel(1, "PLYM POLICE1", 482887500L, 485887500L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.LOW, true, "Plymouth Police 1 / BAPERN SE"),
-                    RadioChannel(2, "PLYM POLICE2", 483037500L, 486037500L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.LOW, true, "Plymouth Police 2 / BAPERN Tac"),
-                    RadioChannel(3, "PLYM SO BCI", 483737500L, 486737500L, DuplexMode.PLUS, 3000000L, "D205N", "D205N", "NFM", PowerLevel.LOW, true, "Plymouth County Sheriff / BCI"),
-                    RadioChannel(4, "BROCKTON PD", 482712500L, 485712500L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.LOW, true, "Brockton Police Analog Operations"),
-                    RadioChannel(5, "MARSHFLD BACK", 482562500L, 485562500L, DuplexMode.PLUS, 3000000L, "203.5", "203.5", "NFM", PowerLevel.LOW, true, "Marshfield PD Backup Analog Channel"),
-                    RadioChannel(6, "MSP SOUTH IN", 460400000L, 465400000L, DuplexMode.PLUS, 5000000L, "131.8", "131.8", "NFM", PowerLevel.LOW, true, "Mass State Police C-Troop South Interop"),
-                    RadioChannel(7, "MSP STATE 1", 460125000L, 465125000L, DuplexMode.PLUS, 5000000L, "131.8", "131.8", "NFM", PowerLevel.LOW, true, "Mass State Police Statewide Analog 1"),
-                    RadioChannel(8, "MSP STATE 2", 460250000L, 465250000L, DuplexMode.PLUS, 5000000L, "131.8", "131.8", "NFM", PowerLevel.LOW, true, "Mass State Police Statewide Analog 2")
-                )
-            ),
-            AnalogCategoryGroup(
-                id = "ma_plym_ham",
-                title = "Plymouth County 2m & 70cm Amateur Repeaters",
-                subtitle = "RepeaterBook Analog FM Repeaters with Standard Offsets",
-                channels = listOf(
-                    RadioChannel(1, "K1PBO PLYM 2M", 146685000L, 146085000L, DuplexMode.MINUS, 600000L, "131.8", "131.8", "FM", PowerLevel.HIGH, false, "Plymouth 2m Repeater (-0.6 MHz)"),
-                    RadioChannel(2, "W1MV BRDG 2M", 147180000L, 147780000L, DuplexMode.PLUS, 600000L, "67.0", "67.0", "FM", PowerLevel.HIGH, false, "Bridgewater MARA (+0.6 MHz)"),
-                    RadioChannel(3, "W1ASS NORW 2M", 146865000L, 146265000L, DuplexMode.MINUS, 600000L, "131.8", "131.8", "FM", PowerLevel.HIGH, false, "Norwell 2m Repeater (-0.6 MHz)"),
-                    RadioChannel(4, "K1PBO PLYM 70", 446325000L, 441325000L, DuplexMode.MINUS, 5000000L, "131.8", "131.8", "FM", PowerLevel.HIGH, false, "Plymouth 70cm (-5.0 MHz)"),
-                    RadioChannel(5, "N1YHS MARSH", 449425000L, 444425000L, DuplexMode.MINUS, 5000000L, "88.5", "88.5", "FM", PowerLevel.HIGH, false, "Marshfield 70cm (-5.0 MHz)")
-                )
+        categories = listOf(AnalogCategoryGroup(
+            id = "ma_plymouth_public_safety",
+            title = "Plymouth County Public Safety",
+            subtitle = "RadioReference snapshot • 2026-11-03 • Police, Fire and EMS together • FRS1 low-power TX fallback",
+            channels = listOf(
+                RadioChannel(1, "Plym Cty", 482387500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482387500L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(2, "Plym Cty K9", 483737500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(483737500L-462562500L), "D205N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(3, "Ply Cty Ctl", 483475000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(483475000L-462562500L), "141.3", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(4, "Ply Cty MA-1", 453450000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453450000L-462562500L), "D306N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(5, "Ply Cty MA-2", 453750000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453750000L-462562500L), "D506N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(6, "Ply Cty MA-3", 453950000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453950000L-462562500L), "D606N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(7, "Ply Cty MA-5", 486100000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(486100000L-462562500L), "D306N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(8, "Ply Cty MA-6", 486775000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(486775000L-462562500L), "D506N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(9, "Abington FD", 482950000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482950000L-462562500L), "D754N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(10, "B'Water FD", 460525000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460525000L-462562500L), "107.2", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(11, "Brockton PD", 482712500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482712500L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(12, "Brktn PD Sec", 482862500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482862500L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(13, "Brockton FD1", 154310000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(154310000L-462562500L), "94.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(14, "Brockton FDU", 453125000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453125000L-462562500L), "206.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(15, "Brockton FD2", 154145000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(154145000L-462562500L), "94.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(16, "Brockton FDU2", 453637500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453637500L-462562500L), "94.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(17, "Brockton FG4", 153830000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(153830000L-462562500L), "94.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(18, "Brockton FG5", 153890000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(153890000L-462562500L), "94.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(19, "BrocktonFDMR", 458887500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(458887500L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(20, "Carver PD", 483362500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(483362500L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(21, "Carver FD", 471250000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(471250000L-462562500L), "192.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(22, "Carver EMS", 483750000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(483750000L-462562500L), "192.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(23, "Duxbury FD", 460575000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460575000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(24, "E.BWater PD", 471775000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(471775000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(25, "E Bwater FD", 453537500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453537500L-462562500L), "192.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(26, "Halifax FD", 453187500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453187500L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(27, "Hanover FD", 484400000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(484400000L-462562500L), "107.2", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(28, "Hanson FD", 483550000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(483550000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(29, "Hanson FD2", 482925000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482925000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(30, "Hingham FD", 484375000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(484375000L-462562500L), "141.3", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(31, "Hull PD", 482987500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482987500L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(32, "Hull FD", 484325000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(484325000L-462562500L), "131.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(33, "Kingston FD", 460600000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460600000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(34, "Lakeville PD", 482487500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482487500L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(35, "Lakeville FD", 460162500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460162500L-462562500L), "100.0", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(36, "Marion FD", 483425000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(483425000L-462562500L), "173.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(37, "Mattapoisett FD", 453075000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453075000L-462562500L), "192.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(38, "Marshfld PD", 482562500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482562500L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(39, "Marshfld FD", 453437500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453437500L-462562500L), "141.3", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(40, "Mdlboro PD", 470825000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(470825000L-462562500L), "103.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(41, "Mdlboro DET", 470375000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(470375000L-462562500L), "162.2", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(42, "Mdlboro FD", 470700000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(470700000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(43, "Mdlboro FD2", 470700000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(470700000L-462562500L), "91.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(44, "Norwell FD", 453175000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453175000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(45, "Norwell FD2", 460037500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460037500L-462562500L), "D411N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(46, "Pembroke FD", 33680000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(33680000L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(47, "Pembroke FD1", 460287500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460287500L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(48, "Pembroke FD2", 460462500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460462500L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(49, "Plymouth PD2", 482837500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482837500L-462562500L), "D754N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(50, "Plymouth FD Disp", 154430000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(154430000L-462562500L), "173.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(51, "Plymouth FD1", 470100000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(470100000L-462562500L), "210.7", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(52, "Plymouth FD2", 470750000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(470750000L-462562500L), "210.7", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(53, "Plymouth FireAlm", 154010000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(154010000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(54, "Plympton FD", 460587500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460587500L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(55, "Rochester FD", 471425000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(471425000L-462562500L), "162.2", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(56, "Rockland PD ABu", 453737500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453737500L-462562500L), "107.2", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(57, "Rockland FD", 482675000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482675000L-462562500L), "D754N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(58, "Scituate FD", 453400000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453400000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(59, "Scituate FDV", 151175000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(151175000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(60, "WarehamPD", 484437500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(484437500L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(61, "Wareham FD", 460237500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460237500L-462562500L), "118.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(62, "WFD CH-2", 460500000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(460500000L-462562500L), "D205N", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(63, "Onset FD", 453125000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453125000L-462562500L), "118.8", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(64, "Onset FireLB", 33920000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(33920000L-462562500L), "203.5", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(65, "Wareham EMS", 482700000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(482700000L-462562500L), "D351N", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(66, "WB'water FD", 453387500L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(453387500L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(67, "Whitman PD2", 471625000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(471625000L-462562500L), "192.8", "None", "FM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03"),
+                RadioChannel(68, "Whitman FD", 472400000L, 462562500L, DuplexMode.SPLIT, kotlin.math.abs(472400000L-462562500L), "203.5", "None", "NFM", PowerLevel.LOW, true, "RR Plymouth County snapshot 2026-11-03")
             )
-        )
+        ))
     )
 
     private fun buildCountyDirectory(
@@ -248,55 +242,8 @@ object AnalogRadioReferenceDirectory {
         countyName: String,
         seedIndex: Int
     ): CountyDirectory {
-        if (stateCode == "MA" && countyName == "Plymouth") {
-            return plymouthCountyMa
-        }
-        val tagPrefix = countyName.uppercase().replace(" ", "").take(6)
-        val vhfFire = 154130000L + ((seedIndex % 25) * 15000L)
-        val uhfFireRx = 453050000L + ((seedIndex % 30) * 25000L)
-        val uhfFireTx = uhfFireRx + 5000000L
-        val vhfLaw = 155475000L + ((seedIndex % 20) * 15000L)
-        val ham2mRx = 146610000L + ((seedIndex % 18) * 15000L)
-        val ham2mTx = ham2mRx - 600000L
-        val ham70Rx = 444100000L + ((seedIndex % 20) * 25000L)
-        val ham70Tx = ham70Rx + 5000000L
-
-        return CountyDirectory(
-            name = "$countyName County",
-            categories = listOf(
-                AnalogCategoryGroup(
-                    id = "${stateCode.lowercase()}_${tagPrefix.lowercase()}_fire",
-                    title = "$countyName County Fire & EMS (Analog NFM)",
-                    subtitle = "VHF/UHF Analog Dispatch, Fireground & EMS Med (P25 Filtered)",
-                    channels = listOf(
-                        RadioChannel(1, "$tagPrefix FD DSP", vhfFire, vhfFire, DuplexMode.SIMPLEX, 0L, "131.8", "131.8", "NFM", PowerLevel.HIGH, false, "$countyName County Fire Dispatch"),
-                        RadioChannel(2, "$tagPrefix FD OPS", uhfFireRx, uhfFireTx, DuplexMode.PLUS, 5000000L, "156.7", "156.7", "NFM", PowerLevel.HIGH, false, "$countyName Fire Ops Repeater"),
-                        RadioChannel(3, "$tagPrefix FG TAC", 154280000L, 154280000L, DuplexMode.SIMPLEX, 0L, "None", "None", "NFM", PowerLevel.LOW, false, "Statewide Fire Mutual Aid Simplex"),
-                        RadioChannel(4, "$tagPrefix EMS 1", 155340000L, 155340000L, DuplexMode.SIMPLEX, 0L, "156.7", "156.7", "NFM", PowerLevel.HIGH, false, "HEAR Ambulance-to-Hospital Analog")
-                    )
-                ),
-                AnalogCategoryGroup(
-                    id = "${stateCode.lowercase()}_${tagPrefix.lowercase()}_law",
-                    title = "$countyName County Sheriff & Police (Analog FM)",
-                    subtitle = "Conventional Analog Channels Only (P25 Digital Excluded)",
-                    channels = listOf(
-                        RadioChannel(1, "$tagPrefix SO 1", vhfLaw, vhfLaw, DuplexMode.SIMPLEX, 0L, "127.3", "127.3", "NFM", PowerLevel.LOW, true, "$countyName Sheriff Analog Ch 1"),
-                        RadioChannel(2, "$tagPrefix LAW IN", 155475000L, 155475000L, DuplexMode.SIMPLEX, 0L, "156.7", "156.7", "NFM", PowerLevel.LOW, true, "National Law Enforcement Analog Aid"),
-                        RadioChannel(3, "$tagPrefix DPW", 151085000L, 156085000L, DuplexMode.SPLIT, 5000000L, "114.8", "114.8", "NFM", PowerLevel.LOW, true, "$countyName Highway / OEM Analog")
-                    )
-                ),
-                AnalogCategoryGroup(
-                    id = "${stateCode.lowercase()}_${tagPrefix.lowercase()}_ham",
-                    title = "$countyName County Amateur Repeaters (2m / 70cm)",
-                    subtitle = "Analog FM ARES / RACES / Club Repeaters",
-                    channels = listOf(
-                        RadioChannel(1, "$tagPrefix 2M RPT", ham2mRx, ham2mTx, DuplexMode.MINUS, 600000L, "100.0", "100.0", "FM", PowerLevel.HIGH, false, "$countyName 2m ARES Repeater (-0.6 MHz)"),
-                        RadioChannel(2, "$tagPrefix 70 RPT", ham70Rx, ham70Tx, DuplexMode.PLUS, 5000000L, "131.8", "131.8", "FM", PowerLevel.HIGH, false, "$countyName 70cm Repeater (+5.0 MHz)"),
-                        RadioChannel(3, "2M CALL SIMP", 146520000L, 146520000L, DuplexMode.SIMPLEX, 0L, "None", "None", "FM", PowerLevel.HIGH, false, "2m National Simplex")
-                    )
-                )
-            )
-        )
+        if (stateCode == "MA" && countyName == "Plymouth") return plymouthCountyMa
+        return CountyDirectory(name="$countyName County", categories=emptyList())
     }
 
     private val stateDefinitions: List<Pair<String, Pair<String, List<String>>>> = listOf(
@@ -360,8 +307,8 @@ object AnalogRadioReferenceDirectory {
                 name = stateName,
                 counties = counties.mapIndexed { cIdx, county ->
                     buildCountyDirectory(code, county, sIdx * 17 + cIdx)
-                }
+                }.filter { it.categories.isNotEmpty() }
             )
-        }
+        }.filter { it.counties.isNotEmpty() }
     }
 }

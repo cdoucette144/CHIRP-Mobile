@@ -100,6 +100,9 @@ fun RadioSettingsTabScreen(
             }
         }
 
+        item {
+            Text("Draft settings only. These controls are not synchronized with the radio. Channel uploads preserve the radio's existing settings.",color=MaterialTheme.colorScheme.error)
+        }
         // Section 1: Basic Settings (Language, Squelch, TOT, Backlight, Battery Save)
         item {
             Card(
@@ -325,34 +328,9 @@ fun RadioSettingsTabScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SettingChipSelectorRow(
-    label: String,
-    options: List<String>,
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    Column {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Medium
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            options.forEach { opt ->
-                FilterChip(
-                    selected = selected == opt,
-                    onClick = { onSelect(opt) },
-                    label = { Text(opt) }
-                )
-            }
-        }
-    }
+private fun SettingChipSelectorRow(label: String,options: List<String>,selected: String,onSelect: (String)->Unit) {
+    com.example.ui.components.ChoiceDropdown(label,options,selected,onSelect)
 }
 
 @Composable

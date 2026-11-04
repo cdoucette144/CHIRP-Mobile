@@ -120,6 +120,8 @@ fun CodeplugTabScreen(
     onMoveChannel: (Int, Int) -> Unit,
     onSaveOrAddChannel: (RadioChannel, Boolean) -> Unit,
     onDeleteChannel: (Int) -> Unit,
+    onDeleteChannels: (Set<Int>) -> Unit,
+    onEditChannels: (Set<Int>, String?, PowerLevel?) -> Unit,
     onDownloadFromRadio: (HardwareProgrammerManager, classSupportedRadioModel, String, String, String) -> Unit,
     onUploadToRadio: (HardwareProgrammerManager, String, String, String) -> Unit,
     onRetryConnection: () -> Unit,
@@ -141,6 +143,33 @@ fun CodeplugTabScreen(
 
     var editingChannel by remember { mutableStateOf<RadioChannel?>(null) }
     var isAddingNewChannel by remember { mutableStateOf(false) }
+
+    var selectedNumbers by remember(channels) { mutableStateOf(emptySet<Int>()) }
+    var showDeleteSelection by remember { mutableStateOf(false) }
+    var showEditSelection by remember { mutableStateOf(false) }
+    if(showDeleteSelection) {
+        AlertDialog(onDismissRequest={showDeleteSelection=false},
+            title={Text("Delete ${selectedNumbers.size} channels?")},
+            text={Text("This removes the selected channels from the working codeplug. The radio changes only after Upload.")},
+            confirmButton={TextButton(onClick={onDeleteChannels(selectedNumbers);selectedNumbers=emptySet();showDeleteSelection=false}){Text("Delete")}},
+            dismissButton={TextButton(onClick={showDeleteSelection=false}){Text("Cancel")}})
+    }
+    if(showEditSelection) {
+        var modeChoice by remember { mutableStateOf("Keep current") }
+        var powerChoice by remember { mutableStateOf("Keep current") }
+        AlertDialog(onDismissRequest={showEditSelection=false},
+            title={Text("Edit ${selectedNumbers.size} channels")},
+            text={Column {
+                com.example.ui.components.ChoiceDropdown("Mode",listOf("Keep current","FM","NFM"),modeChoice,{modeChoice=it})
+                com.example.ui.components.ChoiceDropdown("Power",listOf("Keep current","LOW","HIGH"),powerChoice,{powerChoice=it})
+                Text("Names, receive/transmit frequencies and tones stay unchanged.")
+            }},
+            confirmButton={TextButton(onClick={
+                onEditChannels(selectedNumbers,modeChoice.takeUnless{it=="Keep current"},powerChoice.takeUnless{it=="Keep current"}?.let{PowerLevel.valueOf(it)})
+                selectedNumbers=emptySet();showEditSelection=false
+            }){Text("Apply")}},
+            dismissButton={TextButton(onClick={showEditSelection=false}){Text("Cancel")}})
+    }
 
     // Drag-and-drop state
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
@@ -367,6 +396,14 @@ fun CodeplugTabScreen(
                 }
             }
 
+            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                Checkbox(checked=channels.isNotEmpty() && selectedNumbers.size==channels.size,onCheckedChange={ checked ->
+                    selectedNumbers=if(checked) channels.map{it.number}.toSet() else emptySet()
+                })
+                Text("${selectedNumbers.size} selected",modifier=Modifier.weight(1f))
+                TextButton(onClick={showEditSelection=true},enabled=selectedNumbers.isNotEmpty() && !isFlashing){Text("Edit")}
+                TextButton(onClick={showDeleteSelection=true},enabled=selectedNumbers.isNotEmpty() && !isFlashing){Text("Delete")}
+            }
             // Simple, clean Channel List with Drag-and-Drop & Single RxOnly Checkbox
             LazyColumn(
                 modifier = Modifier
@@ -415,6 +452,14 @@ fun CodeplugTabScreen(
                                 .padding(horizontal = 8.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Checkbox(
+                                checked=channel.number in selectedNumbers,
+                                onCheckedChange={checked ->
+                                    selectedNumbers=if(checked) selectedNumbers+channel.number else selectedNumbers-channel.number
+                                },
+                                enabled=!isFlashing,
+                                modifier=Modifier.testTag("select_channel_${channel.number}")
+                            )
                             // Drag Handle + Quick Up/Down Reorder
                             Box(
                                 modifier = Modifier
@@ -676,6 +721,12 @@ fun ChannelDetailEditorModal(
     var power by remember { mutableStateOf(initialChannel.power) }
     var rxOnly by remember { mutableStateOf(initialChannel.rxOnly) }
     var notes by remember { mutableStateOf(initialChannel.notes) }
+    var rxToneChoice by remember { mutableStateOf(initialChannel.rxTone) }
+    var txToneChoice by remember { mutableStateOf(initialChannel.txTone) }
+    var scanIncluded by remember { mutableStateOf(initialChannel.scanIncluded) }
+    var busyLockout by remember { mutableStateOf(initialChannel.busyChannelLockout) }
+    var fhssPrivacy by remember { mutableStateOf(initialChannel.fhssPrivacy) }
+    var pttId by remember { mutableStateOf(initialChannel.pttId) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -706,7 +757,7 @@ fun ChannelDetailEditorModal(
             ) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it.take(16) },
+                    onValueChange = { name = it.take(if(selectedRadio.model.contains("UV-5R Mini")) 12 else 16) },
                     label = { Text("Channel Name") },
                     singleLine = true,
                     modifier = Modifier
@@ -841,38 +892,30 @@ fun ChannelDetailEditorModal(
                     )
                 }
 
-                // PL / DPL Tone Selection
-                Text("Tone Squelch (PL / DPL)", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("None", "PL (CTCSS)", "DPL (DCS)").forEach { tType ->
-                        FilterChip(
-                            selected = toneType == tType,
-                            onClick = { toneType = tType },
-                            label = { Text(tType) }
-                        )
-                    }
+                val toneOptions = remember {
+                    (AnalogRadioReferenceDirectory.standardCtcssTones+
+                     AnalogRadioReferenceDirectory.standardDcsCodes+
+                     AnalogRadioReferenceDirectory.standardDcsCodes.filter{it.startsWith("D")}.map{it.dropLast(1)+"R"}).distinct()
                 }
-
-                if (toneType == "PL (CTCSS)") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(AnalogRadioReferenceDirectory.standardCtcssTones.drop(1)) { pl ->
-                            FilterChip(
-                                selected = selectedPl == pl,
-                                onClick = { selectedPl = pl },
-                                label = { Text("$pl Hz") }
-                            )
-                        }
+                com.example.ui.components.ChoiceDropdown("Receive tone",toneOptions,rxToneChoice,{rxToneChoice=it})
+                com.example.ui.components.ChoiceDropdown("Transmit tone",toneOptions,txToneChoice,{txToneChoice=it})
+                if(selectedRadio.model.contains("UV-5R Mini")) {
+                    Row(verticalAlignment=Alignment.CenterVertically) {
+                        Checkbox(checked=scanIncluded ?: true,onCheckedChange={scanIncluded=it})
+                        Text("Include in scan")
                     }
-                } else if (toneType == "DPL (DCS)") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(AnalogRadioReferenceDirectory.standardDcsCodes.drop(1)) { dpl ->
-                            FilterChip(
-                                selected = selectedDpl == dpl,
-                                onClick = { selectedDpl = dpl },
-                                label = { Text(dpl) }
-                            )
-                        }
+                    Row(verticalAlignment=Alignment.CenterVertically) {
+                        Checkbox(checked=busyLockout ?: false,onCheckedChange={busyLockout=it})
+                        Text("Busy-channel lockout")
                     }
+                    Row(verticalAlignment=Alignment.CenterVertically) {
+                        Checkbox(checked=fhssPrivacy ?: false,onCheckedChange={fhssPrivacy=it})
+                        Text("FHSS / analog privacy")
+                    }
+                    Text("This is the radio's analog privacy feature, not digital encryption.",style=MaterialTheme.typography.bodySmall)
+                    val pttChoices=listOf("Keep radio value","Off","Begin","End","Both")
+                    val currentPtt=pttId?.takeIf{it in 0..3}?.let{pttChoices[it+1]} ?: pttChoices[0]
+                    com.example.ui.components.ChoiceDropdown("PTT ID",pttChoices,currentPtt,{pttId=pttChoices.indexOf(it).takeIf{it>0}?.minus(1)})
                 }
 
                 // Power & Mode (Radio-dependent options)
@@ -935,12 +978,16 @@ fun ChannelDetailEditorModal(
                             txFreqHz = computedTxHz,
                             duplex = finalDuplex,
                             offsetHz = abs(computedTxHz - rxHz),
-                            rxTone = finalTone,
-                            txTone = if (rxOnly) "None" else finalTone,
+                            rxTone = rxToneChoice,
+                            txTone = if (rxOnly) "None" else txToneChoice,
                             mode = mode,
                             power = if (rxOnly) PowerLevel.LOW else power,
                             rxOnly = rxOnly,
-                            notes = notes
+                            notes = notes,
+                            scanIncluded = scanIncluded,
+                            busyChannelLockout = busyLockout,
+                            fhssPrivacy = fhssPrivacy,
+                            pttId = pttId
                         )
                     )
                 },
