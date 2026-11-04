@@ -95,30 +95,47 @@ fun RadioSettingsTabScreen(
             }
         }
 
-        item {
-            Text("Draft settings only. These controls are not synchronized with the radio. Channel uploads preserve the radio's existing settings.",color=MaterialTheme.colorScheme.error)
-        }
         if (selectedRadio.id == "baofeng_uv32") {
             item {
                 val snapshot = settings.uv32Downloaded
-                Text("UV-32 GPS", style = MaterialTheme.typography.titleMedium)
+                Text("UV-32 radio settings", style = MaterialTheme.typography.titleMedium)
                 if (snapshot == null) {
-                    Text("Download from the UV-32 to see its GPS settings.", style = MaterialTheme.typography.bodySmall)
+                    Text("Download from the UV-32 to load its settings.", style = MaterialTheme.typography.bodySmall)
                 } else {
+                    Text("Changes are sent with your channels when you tap Upload in Codeplug.")
                     val enabled = snapshot.gpsEnabled?.let { if (it) "On" else "Off" } ?: "Unknown"
                     val timeZone = snapshot.gpsUtcOffsetHours?.let { "UTC%+d".format(it) } ?: "Unknown"
-                    Text("GPS $enabled · ${snapshot.gpsMode ?: "Unknown mode"} · $timeZone")
-                    snapshot.scanMode?.let { Text("Radio scan mode: $it") }
+                    Text("GPS (read only) $enabled · ${snapshot.gpsMode ?: "Unknown mode"} · $timeZone")
+                    snapshot.scanMode?.let { Text("Radio scan mode (read only) $it") }
+                }
+            }
+            val snapshot = settings.uv32Downloaded ?: return@LazyColumn
+            if (snapshot.squelch != null) {
+                item {
+                    SettingChipSelectorRow(
+                        label = "Squelch Level (SQL 0–9)",
+                        options = RadioSettingsState.squelchOptions,
+                        selected = settings.squelchLevel.toString(),
+                        onSelect = { onUpdateSettings(settings.copy(squelchLevel = it.toInt())) }
+                    )
+                }
+            }
+            if (snapshot.keypadBeep != null) {
+                item {
+                    SettingToggleRow(
+                        title = "Keypad Beep",
+                        subtitle = "Audible confirmation tone on keypad press",
+                        checked = settings.keypadBeep,
+                        onCheckedChange = { onUpdateSettings(settings.copy(keypadBeep = it)) }
+                    )
                 }
             }
             item {
                 Text("UV-32 zone names", style = MaterialTheme.typography.titleMedium)
-                Text("Names are saved on this phone. The radio keeps its current names until zone uploads are supported.",
-                    style = MaterialTheme.typography.bodySmall)
             }
             items(10) { index ->
                 val slot = index + 1
-                val radioName = settings.uv32Downloaded?.zoneNames?.getOrNull(index).orEmpty()
+                val radioName = snapshot.zoneNames[index]
                 OutlinedTextField(
                     value = settings.uv32ZoneNames[index],
                     onValueChange = { input ->
@@ -132,6 +149,11 @@ fun RadioSettingsTabScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+            return@LazyColumn
+        }
+
+        item {
+            Text("Draft settings only. These controls are not synchronized with the radio. Channel uploads preserve the radio's existing settings.",color=MaterialTheme.colorScheme.error)
         }
 
         // Section 1: Basic Settings (Language, Squelch, TOT, Backlight, Battery Save)
