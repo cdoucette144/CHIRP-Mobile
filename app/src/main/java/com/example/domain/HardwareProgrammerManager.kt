@@ -289,9 +289,14 @@ class HardwareProgrammerManager(private val context: Context) {
         val rxQueue = LinkedBlockingQueue<Byte>()
         val servicesReady = CompletableDeferred<BluetoothGatt>()
         val descriptorReady = CompletableDeferred<Boolean>()
+        val mtuReady = CompletableDeferred<Int>()
         val writeAckSignal = LinkedBlockingQueue<Int>()
 
         val gattCallback = object : BluetoothGattCallback() {
+            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                mtuReady.complete(if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23)
+            }
+
             @SuppressLint("MissingPermission")
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
@@ -465,15 +470,25 @@ class HardwareProgrammerManager(private val context: Context) {
             }
         }
 
+        val mtu = if (configureUv32Baud && connectedGatt.requestMtu(247)) {
+            withTimeoutOrNull(2500L) { mtuReady.await() } ?: 23
+        } else 23
+        if (configureUv32Baud) android.util.Log.i("ChirpBluetooth", "UV-32 BLE MTU: $mtu")
+
         delay(500)
 
         object : RadioSerialTransport {
             @SuppressLint("MissingPermission")
             override suspend fun writeBytes(data: ByteArray) {
-                // Chunk writes into 20-byte BLE UART frames
+                // UV-32 clone writes are sent as one complete command.
+                val uv32Block = configureUv32Baud && data.size == 68 && data[0] == 0x57.toByte()
+                if (uv32Block && mtu - 3 < data.size) {
+                    throw IOException("UV-32 Bluetooth link could not fit a full write frame (MTU $mtu).")
+                }
+                val chunkSize = if (uv32Block) data.size else 20
                 var offset = 0
                 while (offset < data.size) {
-                    val end = (offset + 20).coerceAtMost(data.size)
+                    val end = (offset + chunkSize).coerceAtMost(data.size)
                     val chunk = data.copyOfRange(offset, end)
                     writeAckSignal.clear()
                     val useNoResponse =
@@ -1116,8 +1131,12 @@ class HardwareProgrammerManager(private val context: Context) {
                         payload[i] = (value xor k).toByte()
                     }
                 }
+                android.util.Log.i("ChirpBluetooth", "UV-32 write %04X TX 68 bytes".format(at))
                 transport.writeBytes(byteArrayOf(0x57, (at shr 8).toByte(), at.toByte(), 0x40) + payload)
-                if (!transport.readBytes(1, 4000L).contentEquals(byteArrayOf(6))) {
+                val ack = transport.readBytes(1, 4000L)
+                if (!ack.contentEquals(byteArrayOf(6))) {
+                    val reply = ack.joinToString(" ") { "%02X".format(it) }.ifEmpty { "no reply" }
+                    android.util.Log.w("ChirpBluetooth", "UV-32 write %04X RX $reply".format(at))
                     throw IOException("UV-32 write failed at %04X. Backup retained.".format(at))
                 }
                 progress(0.33f + 0.33f * (index + 1) / blocks.size, "Writing UV-32 block %04X".format(at))
