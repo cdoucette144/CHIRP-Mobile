@@ -114,6 +114,8 @@ interface RadioSerialTransport {
 
 class HardwareProgrammerManager(private val context: Context) {
     private var lastMiniImage: ByteArray? = null
+    var lastUv32Settings: com.example.data.model.Uv32SettingsSnapshot? = null
+        private set
     var lastPersistenceMessage: String? = null
         private set
 
@@ -1102,7 +1104,8 @@ class HardwareProgrammerManager(private val context: Context) {
             }
         }
         val bytes = image.toByteArray()
-        if (!uv32) lastMiniImage = bytes.copyOf()
+        if (uv32) lastUv32Settings = com.example.data.model.Uv32SettingsSnapshot.fromImage(bytes)
+        else lastMiniImage = bytes.copyOf()
         val backup = java.io.File(context.filesDir, if (uv32) "uv32-backups" else "mini-backups").apply { mkdirs() }
         val file = java.io.File(backup, "${if (uv32) "uv32" else "uv5r-mini"}-${System.currentTimeMillis()}.bin")
         file.writeBytes(bytes)

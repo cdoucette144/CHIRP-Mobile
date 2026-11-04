@@ -184,14 +184,6 @@ fun CodeplugTabScreen(
             .testTag("codeplug_tab_screen")
     ) {
         // Leave the channel list room once a codeplug is open.
-        if (hasCodeplug) {
-            TextButton(
-                onClick = { showRadioControls = !showRadioControls },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (showRadioControls) "Hide radio controls" else "Radio controls")
-            }
-        }
         if (showRadioControls) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -406,11 +398,22 @@ fun CodeplugTabScreen(
                 }
             }
 
-            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked=channels.isNotEmpty() && selectedNumbers.size==channels.size,onCheckedChange={ checked ->
                     selectedNumbers=if(checked) channels.map{it.number}.toSet() else emptySet()
                 })
-                Text(if (selectedNumbers.isEmpty()) "Select all" else "${selectedNumbers.size} selected", modifier = Modifier.weight(1f))
+                Text(
+                    if (selectedNumbers.isEmpty()) "Select all" else "${selectedNumbers.size} selected",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { showRadioControls = !showRadioControls }) {
+                    Icon(
+                        Icons.Default.Radio,
+                        contentDescription = if (showRadioControls) "Hide radio controls" else "Show radio controls",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
                 if (selectedNumbers.isNotEmpty()) {
                     TextButton(onClick = { showEditSelection = true }, enabled = !isFlashing) { Text("Edit") }
                     TextButton(onClick = { showDeleteSelection = true }, enabled = !isFlashing) { Text("Delete") }

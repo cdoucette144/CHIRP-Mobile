@@ -1,5 +1,34 @@
 package com.example.data.model
 
+data class Uv32SettingsSnapshot(
+    val zoneNames: List<String>,
+    val gpsEnabled: Boolean?,
+    val gpsMode: String?,
+    val gpsUtcOffsetHours: Int?
+) {
+    companion object {
+        fun fromImage(image: ByteArray): Uv32SettingsSnapshot {
+            require(image.size == 0x8380)
+            fun unsigned(offset: Int) = image[offset].toInt() and 0xff
+            return Uv32SettingsSnapshot(
+                zoneNames = List(10) { index ->
+                    val start = 0x8280 + index * 16
+                    image.copyOfRange(start, start + 16)
+                        .takeWhile { it != 0.toByte() && it != 0xff.toByte() }
+                        .toByteArray().toString(charset("GB2312")).trim()
+                },
+                gpsEnabled = when (unsigned(0x8070)) {
+                    0 -> false
+                    1 -> true
+                    else -> null
+                },
+                gpsMode = listOf("GPS", "BeiDou", "GPS + BeiDou").getOrNull(unsigned(0x8071)),
+                gpsUtcOffsetHours = unsigned(0x807b).takeIf { it in 0..24 }?.minus(12)
+            )
+        }
+    }
+}
+
 data class RadioSettingsState(
     val squelchLevel: Int = 3,
     val timeOutTimerSec: String = "60s",
@@ -22,7 +51,9 @@ data class RadioSettingsState(
     val displayFormatA: String = "Name",
     val displayFormatB: String = "Frequency",
     val pttIdMode: String = "Off",
-    val aniCode: String = "101"
+    val aniCode: String = "101",
+    val uv32ZoneNames: List<String> = List(10) { "" },
+    val uv32Downloaded: Uv32SettingsSnapshot? = null
 ) {
     fun toCompactString(): String {
         return listOf(

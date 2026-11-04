@@ -35,7 +35,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -58,7 +57,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -162,8 +160,6 @@ fun AuthenticatedFieldWorkspace(
     val isFlashing by viewModel.isFlashing.collectAsStateWithLifecycle()
     val flashProgress by viewModel.flashProgress.collectAsStateWithLifecycle()
     val flashLogs by viewModel.flashLogs.collectAsStateWithLifecycle()
-    val rrUsername by viewModel.rrUsername.collectAsStateWithLifecycle()
-    val rrConnected by viewModel.rrConnected.collectAsStateWithLifecycle()
 
     var currentTab by rememberSaveable { mutableStateOf(MainTab.CHANNEL_BANKS) }
     var showSettingsModal by remember { mutableStateOf(false) }
@@ -419,8 +415,6 @@ fun AuthenticatedFieldWorkspace(
     }
 
     if (showSettingsModal) {
-        var usernameInput by remember(rrUsername) { mutableStateOf(rrUsername) }
-        var passwordInput by remember { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showSettingsModal = false },
@@ -433,44 +427,9 @@ fun AuthenticatedFieldWorkspace(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = if (rrConnected) {
-                            "Connected as '$rrUsername' for live SOAP/CSV imports."
-                        } else {
-                            "Use Channel Banks → Import channels / CSV. Live RadioReference sign-in is not implemented."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (rrConnected) RxSafeGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Use Channel Banks → Import channels / CSV to add RadioReference exports.",
+                        style = MaterialTheme.typography.bodySmall
                     )
-                    OutlinedTextField(
-                        value = usernameInput,
-                        onValueChange = { usernameInput = it },
-                        label = { Text("RadioReference Username") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("rr_username_input")
-                    )
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = { passwordInput = it },
-                        label = { Text("RadioReference Password / API Key") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("rr_password_input")
-                    )
-                    Button(
-                        onClick = {
-                            viewModel.saveRadioReferenceLogin(context, usernameInput, passwordInput)
-                            showSettingsModal = false
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("save_rr_login_button")
-                    ) {
-                        Text("Save username")
-                    }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 

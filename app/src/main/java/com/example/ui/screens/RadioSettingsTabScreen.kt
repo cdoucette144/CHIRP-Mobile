@@ -103,6 +103,41 @@ fun RadioSettingsTabScreen(
         item {
             Text("Draft settings only. These controls are not synchronized with the radio. Channel uploads preserve the radio's existing settings.",color=MaterialTheme.colorScheme.error)
         }
+        if (selectedRadio.id == "baofeng_uv32") {
+            item {
+                val snapshot = settings.uv32Downloaded
+                Text("UV-32 GPS", style = MaterialTheme.typography.titleMedium)
+                if (snapshot == null) {
+                    Text("Download from the UV-32 to see its GPS settings.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    val enabled = snapshot.gpsEnabled?.let { if (it) "On" else "Off" } ?: "Unknown"
+                    val timeZone = snapshot.gpsUtcOffsetHours?.let { "UTC%+d".format(it) } ?: "Unknown"
+                    Text("GPS $enabled · ${snapshot.gpsMode ?: "Unknown mode"} · $timeZone")
+                }
+            }
+            item {
+                Text("UV-32 zone names", style = MaterialTheme.typography.titleMedium)
+                Text("Names are saved on this phone. The radio keeps its current names until zone uploads are supported.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            items(10) { index ->
+                val slot = index + 1
+                val radioName = settings.uv32Downloaded?.zoneNames?.getOrNull(index).orEmpty()
+                OutlinedTextField(
+                    value = settings.uv32ZoneNames[index],
+                    onValueChange = { input ->
+                        val names = settings.uv32ZoneNames.toMutableList()
+                        names[index] = input.filter { it in ' '..'~' }.take(16)
+                        onUpdateSettings(settings.copy(uv32ZoneNames = names))
+                    },
+                    label = { Text("Zone $slot · channels ${index * 100 + 1}–${slot * 100}") },
+                    placeholder = { Text(radioName.ifBlank { "Zone $slot" }) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
         // Section 1: Basic Settings (Language, Squelch, TOT, Backlight, Battery Save)
         item {
             Card(

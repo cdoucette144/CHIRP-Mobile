@@ -95,13 +95,6 @@ class ChirpViewModel(
     private val _remotePreviewCodeplug = MutableStateFlow<SharedCodeplugDocument?>(null)
     val remotePreviewCodeplug: StateFlow<SharedCodeplugDocument?> = _remotePreviewCodeplug.asStateFlow()
 
-    // RadioReference Login Credentials State
-    private val _rrUsername = MutableStateFlow("")
-    val rrUsername: StateFlow<String> = _rrUsername.asStateFlow()
-
-    private val _rrConnected = MutableStateFlow(false)
-    val rrConnected: StateFlow<Boolean> = _rrConnected.asStateFlow()
-
     // Real-Time Hardware Connectivity State & Retry Cache
     private val _hardwareConnectivity = MutableStateFlow(HardwareConnectivityState())
     val hardwareConnectivity: StateFlow<HardwareConnectivityState> = _hardwareConnectivity.asStateFlow()
@@ -196,21 +189,6 @@ class ChirpViewModel(
         _statusBanner.value = message
     }
 
-    fun saveRadioReferenceLogin(context: Context, username: String, password: String) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString("rr_username", username.trim())
-            .putBoolean("rr_connected", username.isNotBlank() && password.isNotBlank())
-            .apply()
-        _rrUsername.value = username.trim()
-        _rrConnected.value = false
-        _statusBanner.value = if (_rrConnected.value) {
-            "RadioReference account '${username.trim()}' linked for analog imports."
-        } else {
-            "RadioReference credentials cleared."
-        }
-    }
-
     fun loadPrefs(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         localPrefs = prefs
@@ -223,8 +201,9 @@ class ChirpViewModel(
                 category = CATEGORY_CHANNEL_BANK,
                 channelSpecs = (0 until channels.length()).map { channels.getString(it) })
         }
-        _rrUsername.value = prefs.getString("rr_username", "") ?: ""
-        _rrConnected.value = false
+        prefs.edit().remove("rr_username").remove("rr_connected").apply()
+        val names = org.json.JSONArray(prefs.getString("uv32_zone_names", "[]") ?: "[]")
+        _radioSettings.value = _radioSettings.value.copy(uv32ZoneNames = List(10) { names.optString(it) })
     }
 
     // --- TAB 1: CHANNEL BANKS OPERATIONS ---
@@ -454,6 +433,9 @@ class ChirpViewModel(
                 )
                 _codeplugChannels.value = downloadedChannels.mapIndexed { idx, ch ->
                     if (radio.id == "baofeng_uv32" || radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                }
+                programmerManager.lastUv32Settings?.takeIf { radio.id == "baofeng_uv32" }?.let { snapshot ->
+                    _radioSettings.value = _radioSettings.value.copy(uv32Downloaded = snapshot)
                 }
                 _codeplugTitle.value = "${radio.model} Codeplug"
                 _isCodeplugLoaded.value = true
@@ -704,6 +686,9 @@ class ChirpViewModel(
     // --- TAB 3: RADIO SETTINGS ---
 
     fun updateRadioSettings(updated: RadioSettingsState) {
+        if (updated.uv32ZoneNames != _radioSettings.value.uv32ZoneNames) {
+            localPrefs?.edit()?.putString("uv32_zone_names", org.json.JSONArray(updated.uv32ZoneNames).toString())?.apply()
+        }
         _radioSettings.value = updated
     }
 
