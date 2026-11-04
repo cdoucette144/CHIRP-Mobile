@@ -630,7 +630,7 @@ private fun RadioReferenceHierarchicalBrowser(
             .padding(16.dp)
             .testTag("rr_hierarchical_browser")
     ) {
-        Text("Dated source snapshots and conventional CSV imports. Police, Fire and EMS are shown together. No live RadioReference connection.",
+        Text("Your RadioReference exports • source alpha tags and separate RX/TX tones preserved • all agencies together. Monitor defaults apply when adding a bank to a radio.",
             modifier=Modifier.padding(12.dp),color=MaterialTheme.colorScheme.error)
         Button(onClick=onImportCsv,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp)) {
             Text("Import RadioReference CSV • all agencies together")
@@ -896,6 +896,7 @@ private fun CategoryChannelPickerView(
     sourceLabel: String,
     onImport: (List<RadioChannel>, String) -> Unit
 ) {
+    var channelSearch by remember(groups) { mutableStateOf("") }
     val allAvailable = remember(groups) {
         groups.flatMap { grp -> grp.channels.map { ch -> "${grp.id}_${ch.name}_${ch.rxFreqHz}" to ch } }
     }
@@ -904,16 +905,17 @@ private fun CategoryChannelPickerView(
         val f=ch.rxFreqHz
         val supported=if(ch.mode=="AM") f in 108000000L..135999999L else
             f in 136000000L..174000000L || f in 350000000L..390000000L || f in 400000000L..520000000L
-        return supported && ch.name.length<=12
+        return supported && ch.name.length<=12 && (ch.mode!="AM" || selectedRadio.supportsNativeRxOnly)
     }
     val eligibleAvailable = allAvailable.filter { eligible(it.second) }
     val selectedKeys = remember(groups,selectedRadio.id) {
         mutableStateListOf<String>().apply {
-            addAll(eligibleAvailable.map { it.first })
+            addAll(eligibleAvailable.take(selectedRadio.maxChannels).map { it.first })
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        OutlinedTextField(value=channelSearch,onValueChange={channelSearch=it},label={Text("Search alpha tag, agency or frequency")},modifier=Modifier.fillMaxWidth(),singleLine=true)
         if(eligibleAvailable.size!=allAvailable.size) Text(
             "${allAvailable.size} source entries. ${allAvailable.size-eligibleAvailable.size} need a shorter radio alias or a different receive band; they are not selected by default.",
             color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(8.dp))
@@ -929,7 +931,7 @@ private fun CategoryChannelPickerView(
                         selectedKeys.clear()
                     } else {
                         selectedKeys.clear()
-                        selectedKeys.addAll(eligibleAvailable.map { it.first })
+                        selectedKeys.addAll(eligibleAvailable.take(selectedRadio.maxChannels).map { it.first })
                     }
                 }
             ) {
@@ -943,7 +945,7 @@ private fun CategoryChannelPickerView(
                         .map { it.second }
                     onImport(chosen, sourceLabel)
                 },
-                enabled = selectedKeys.isNotEmpty(),
+                enabled = selectedKeys.isNotEmpty() && selectedKeys.size<=selectedRadio.maxChannels,
                 modifier = Modifier.testTag("confirm_import_rr_channels_button")
             ) {
                 Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -977,7 +979,7 @@ private fun CategoryChannelPickerView(
                     }
                 }
 
-                items(group.channels, key = { "${group.id}_${it.name}_${it.rxFreqHz}" }) { ch ->
+                items(group.channels.filter { channelSearch.isBlank() || it.name.contains(channelSearch,true) || it.notes.contains(channelSearch,true) || it.rxFreqMhzString.contains(channelSearch) }, key = { "${group.id}_${it.name}_${it.rxFreqHz}" }) { ch ->
                     val key = "${group.id}_${ch.name}_${ch.rxFreqHz}"
                     val isChecked = key in selectedKeys
                     Surface(

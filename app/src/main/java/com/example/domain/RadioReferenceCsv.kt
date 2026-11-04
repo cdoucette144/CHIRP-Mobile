@@ -10,11 +10,12 @@ object RadioReferenceCsv {
         require(rows.isNotEmpty()) { "CSV is empty" }
         val header=rows.first().map { it.trim().lowercase() }
         fun column(vararg names:String)=names.firstNotNullOfOrNull { name -> header.indexOf(name).takeIf{it>=0} }
-        val frequency=column("frequency","output","rx frequency") ?: error("Conventional frequency CSV required; trunked talkgroups are not supported")
+        val frequency=column("frequency","frequency output","output","rx frequency") ?: error("Conventional frequency CSV required; trunked talkgroups are not supported")
         val alpha=column("alpha tag","alphatag","name") ?: error("CSV needs an Alpha Tag column")
         val mode=column("mode") ?: error("CSV needs a Mode column to exclude digital channels")
-        val input=column("input","input frequency","tx frequency")
-        val tone=column("tone")
+        val input=column("input","frequency input","input frequency","tx frequency")
+        val tone=column("tone","pl output tone")
+        val inputTone=column("pl input tone","tx tone")
         val description=column("description")
         var skipped=0
         val channels=rows.drop(1).filter { row -> row.any{it.isNotBlank()} }.mapNotNull { row ->
@@ -24,20 +25,23 @@ object RadioReferenceCsv {
             if(rx==null || !rx.isFinite() || rx<=0) { skipped++;return@mapNotNull null }
             val name=cell(alpha)
             if(name.isBlank()) { skipped++;return@mapNotNull null }
-            val sourceTone=cell(tone)
-            val parsedTone=when {
-                sourceTone.isBlank() || sourceTone.uppercase() in listOf("CSQ","NONE","SEARCH") -> "None"
-                Regex("\\d{2,3}(\\.\\d+)?\\s*PL",RegexOption.IGNORE_CASE).matches(sourceTone) -> sourceTone.substringBefore(" ").trim()
-                Regex("[0-7]{3}\\s*DPL",RegexOption.IGNORE_CASE).matches(sourceTone) -> "D"+sourceTone.substringBefore(" ").padStart(3,'0')+"N"
-                Regex("D[0-7]{3}[NR]",RegexOption.IGNORE_CASE).matches(sourceTone) -> sourceTone.uppercase()
-                sourceTone.toDoubleOrNull()!=null -> sourceTone
-                else -> { skipped++;return@mapNotNull null }
+            fun parseTone(value:String):String? {
+                val text=value.trim()
+                if(text.isBlank() || text.uppercase() in listOf("CSQ","NONE","SEARCH"))return "None"
+                if(Regex("[0-7]{3}\\s*DPL",RegexOption.IGNORE_CASE).matches(text))return "D"+text.take(3)+"N"
+                if(Regex("D[0-7]{3}[NR]",RegexOption.IGNORE_CASE).matches(text))return text.uppercase()
+                val numeric=text.replace(Regex("\\s*PL$",RegexOption.IGNORE_CASE),"").trim()
+                if(numeric.toDoubleOrNull()!=null)return numeric
+                return null
             }
+            val parsedTone=parseTone(cell(tone))
+            val transmitTone=if(inputTone!=null) parseTone(cell(inputTone)) else parsedTone
+            if(parsedTone==null || transmitTone==null) { skipped++;return@mapNotNull null }
             val tx=cell(input).toDoubleOrNull()?.takeIf{it.isFinite() && it>0} ?: rx
             val rxHz=RadioChannel.mhzToHz(rx);val txHz=RadioChannel.mhzToHz(tx)
             RadioChannel(number=0,name=name,rxFreqHz=rxHz,txFreqHz=txHz,
                 duplex=if(txHz==rxHz) DuplexMode.SIMPLEX else DuplexMode.SPLIT,
-                offsetHz=kotlin.math.abs(txHz-rxHz),rxTone=parsedTone,txTone=parsedTone,
+                offsetHz=kotlin.math.abs(txHz-rxHz),rxTone=parsedTone,txTone=transmitTone,
                 mode=analog,power=PowerLevel.LOW,notes=cell(description))
         }.mapIndexed { index,ch -> ch.copy(number=index+1) }
         return AnalogCsvImport(channels,skipped)

@@ -92,6 +92,7 @@ enum class MainTab {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.domain.AnalogRadioReferenceDirectory.loadExportCatalog(applicationContext)
         enableEdgeToEdge()
         setContent {
             var isDarkTheme by rememberSaveable { mutableStateOf(true) }

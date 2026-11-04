@@ -23,6 +23,10 @@ data class StateDirectory(
 )
 
 object AnalogRadioReferenceDirectory {
+    private var importedStates: List<StateDirectory> = emptyList()
+    fun loadExportCatalog(context: android.content.Context) {
+        importedStates = RadioReferenceExportCatalog.load(context)
+    }
 
     val standardCtcssTones: List<String> = listOf(
         "None","67.0","69.3","71.9","74.4","77.0","79.7","82.5","85.4","88.5","91.5",
@@ -289,7 +293,7 @@ object AnalogRadioReferenceDirectory {
         "WY" to ("Wyoming" to listOf("Laramie", "Natrona", "Campbell", "Sweetwater", "Teton"))
     )
 
-    val all50States: List<StateDirectory> by lazy {
+    private val builtInStates: List<StateDirectory> by lazy {
         stateDefinitions.mapIndexed { sIdx, (code, nameAndCounties) ->
             val (stateName, counties) = nameAndCounties
             StateDirectory(
@@ -301,4 +305,5 @@ object AnalogRadioReferenceDirectory {
             )
         }.filter { it.counties.isNotEmpty() }
     }
+    val all50States: List<StateDirectory> get() = importedStates.ifEmpty { builtInStates }
 }
