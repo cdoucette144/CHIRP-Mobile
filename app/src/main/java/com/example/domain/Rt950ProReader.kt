@@ -33,8 +33,21 @@ internal object Rt950ProReader {
             if (reply != 6.toByte()) throw IOException("RT-950 Pro $label rejected (reply %02X).".format(reply))
         }
         transport.clearRxBuffer()
-        transport.writeBytes(ascii("PROGRAMBT9000U"))
-        ack("handshake")
+        val magic = ascii("PROGRAMBT9000U")
+        transport.writeBytes(magic)
+        var reply = transport.readBytes(1, 3000)
+        var echoed = 0
+        while (echoed < magic.size && reply.firstOrNull() == magic[echoed]) {
+            echoed++
+            reply = transport.readBytes(1, 3000)
+        }
+        if (echoed > 0) {
+            android.util.Log.i("ChirpBluetooth", "RT-950 Pro handshake echoed $echoed/${magic.size} command bytes.")
+        }
+        if (reply.firstOrNull() != 6.toByte()) {
+            val detail = reply.firstOrNull()?.let { "reply %02X".format(it) } ?: "no ACK"
+            throw IOException("RT-950 Pro handshake failed ($detail after $echoed echoed bytes).")
+        }
         try {
             // The initial ACK is the entire reply. Discard any trailing startup bytes
             // before asking for the separately framed firmware identification.
