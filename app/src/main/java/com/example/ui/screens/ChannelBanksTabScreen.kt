@@ -19,6 +19,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -73,6 +78,7 @@ fun ChannelBanksTabScreen(
     selectedRadio: classSupportedRadioModel,
     onSaveBank: (ZoneDocument?, String, String, List<RadioChannel>) -> Unit,
     onDeleteBank: (ZoneDocument) -> Unit,
+    onMoveBank: (String, Int) -> Unit,
     onAddBankToCodeplug: (ZoneDocument) -> Unit
 ) {
     // Sub-navigation inside Tab 1:
@@ -98,7 +104,7 @@ fun ChannelBanksTabScreen(
                 val text=importContext.contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()} ?: error("Unable to read CSV")
                 val result=com.example.domain.RadioReferenceCsv.parse(text)
                 require(result.channels.isNotEmpty()) { "No supported analog channels found" }
-                draftChannels.addAll(result.channels.mapIndexed { index,ch -> ch.copy(number=draftChannels.size+index+1) })
+                draftChannels.addAll(result.channels.mapIndexed { index,ch -> ch.copy(number=draftChannels.size+index+1, rxOnly = ch.mode == "AM") })
                 if(bankNameInput.isBlank()) bankNameInput="Imported analog channels"
                 bankRegionSummary="User-supplied conventional CSV"
                 isEditingBank=true
@@ -131,7 +137,7 @@ fun ChannelBanksTabScreen(
                 onImportSelectedChannels = { importedList, sourceLabel ->
                     val startNum = draftChannels.size + 1
                     importedList.forEachIndexed { idx, ch ->
-                        draftChannels.add(ch.copy(number = startNum + idx))
+                        draftChannels.add(ch.copy(number = startNum + idx, rxOnly = ch.mode == "AM"))
                     }
                     if (bankNameInput.isBlank()) {
                         bankNameInput = sourceLabel
@@ -155,6 +161,11 @@ fun ChannelBanksTabScreen(
                 onOpenEditChannel = { index ->
                     editingDraftChannelIndex = index
                     showCustomChannelModal = true
+                },
+                onMoveDraftChannel = { from, to ->
+                    if (from in draftChannels.indices && to in draftChannels.indices && from != to) {
+                        draftChannels.add(to, draftChannels.removeAt(from))
+                    }
                 },
                 onDeleteDraftChannel = { index ->
                     if (index in draftChannels.indices) {
@@ -182,8 +193,9 @@ fun ChannelBanksTabScreen(
         }
 
         else -> {
-            // Default view: Saved Channel Banks list (NO default banks!)
+            val bankListState = rememberLazyListState()
             LazyColumn(
+                state = bankListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .testTag("channel_banks_list"),
@@ -279,7 +291,7 @@ fun ChannelBanksTabScreen(
                         }
                     }
                 } else {
-                    items(savedBanks, key = { it.id }) { bank ->
+                    itemsIndexed(savedBanks, key = { _, bank -> bank.id }) { index, bank ->
                         val isSelected = selectedBankIdInList == bank.id
                         val bankChannels = remember(bank.channelSpecs) { bank.parsedChannels() }
 
@@ -307,13 +319,16 @@ fun ChannelBanksTabScreen(
                                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                                         shape = RoundedCornerShape(12.dp)
                                     )
-                                    .padding(14.dp)
+                                    .padding(8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    BankReorderHandle(bankListState, index + 1, 1, savedBanks.size, "Reorder ${bank.name}") {
+                                        onMoveBank(bank.id, it - 1)
+                                    }
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = bank.name,
@@ -346,13 +361,14 @@ fun ChannelBanksTabScreen(
                                 ) {
                                     Button(
                                         onClick = { onAddBankToCodeplug(bank) },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                         modifier = Modifier
                                             .weight(1f)
                                             .testTag("append_bank_to_codeplug_${bank.name}")
                                     ) {
                                         Icon(Icons.Default.PlaylistAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Add to Codeplug")
+                                        Text("Add to Codeplug", style = MaterialTheme.typography.labelSmall, maxLines = 1)
                                     }
 
                                     OutlinedButton(
@@ -448,6 +464,7 @@ private fun ChannelBankEditorView(
     onOpenAddCustomChannel: () -> Unit,
     onOpenEditChannel: (Int) -> Unit,
     onDeleteDraftChannel: (Int) -> Unit,
+    onMoveDraftChannel: (Int, Int) -> Unit,
     onOpenRadioReferenceImport: () -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit
@@ -503,24 +520,26 @@ private fun ChannelBankEditorView(
         ) {
             OutlinedButton(
                 onClick = onOpenAddCustomChannel,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("add_custom_channel_to_bank_button")
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Add Custom Channel")
+                Text("Add Channel", style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
 
             Button(
                 onClick = onOpenRadioReferenceImport,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("import_from_radioref_button")
             ) {
                 Icon(Icons.Default.SettingsInputAntenna, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Import channels / CSV")
+                Text("Import / CSV", style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
         }
 
@@ -550,7 +569,9 @@ private fun ChannelBankEditorView(
                 )
             }
         } else {
+            val channelListState = rememberLazyListState()
             LazyColumn(
+                state = channelListState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -572,6 +593,9 @@ private fun ChannelBankEditorView(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            BankReorderHandle(channelListState, index, 0, channels.lastIndex, "Reorder ${ch.name}") {
+                                onMoveDraftChannel(index, it)
+                            }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "${(index + 1).toString().padStart(2, '0')}. ${ch.name}",
@@ -597,6 +621,42 @@ private fun ChannelBankEditorView(
             }
         }
     }
+}
+
+@Composable
+private fun BankReorderHandle(
+    listState: LazyListState,
+    index: Int,
+    firstIndex: Int,
+    lastIndex: Int,
+    description: String,
+    onMove: (Int) -> Unit
+) {
+    val move = androidx.compose.runtime.rememberUpdatedState(onMove)
+    Icon(
+        Icons.Default.DragHandle,
+        contentDescription = description,
+        modifier = Modifier.size(40.dp).pointerInput(listState, index, firstIndex, lastIndex) {
+            var distance = 0f
+            detectDragGesturesAfterLongPress(
+                onDragStart = { distance = 0f },
+                onDrag = { change, amount ->
+                    change.consume()
+                    distance += amount.y
+                },
+                onDragEnd = {
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    val source = visible.firstOrNull { it.index == index }
+                    if (source != null) {
+                        val targetY = source.offset + source.size / 2f + distance
+                        val target = visible.filter { it.index in firstIndex..lastIndex }
+                            .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - targetY) }
+                        if (target != null && target.index != index) move.value(target.index)
+                    }
+                }
+            )
+        }.padding(8.dp)
+    )
 }
 
 @Composable

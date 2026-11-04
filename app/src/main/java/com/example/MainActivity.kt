@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,11 +95,21 @@ class MainActivity : ComponentActivity() {
         com.example.domain.AnalogRadioReferenceDirectory.loadExportCatalog(applicationContext)
         enableEdgeToEdge()
         setContent {
-            var isDarkTheme by rememberSaveable { mutableStateOf(true) }
-            ChirpFieldTheme(darkTheme = isDarkTheme) {
+            val appearance = remember { getSharedPreferences("chirpfield_appearance", MODE_PRIVATE) }
+            var isDarkTheme by rememberSaveable { mutableStateOf(appearance.getBoolean("dark", true)) }
+            var palette by rememberSaveable { mutableStateOf(appearance.getString("palette", "Amber / Cyan") ?: "Amber / Cyan") }
+            ChirpFieldTheme(darkTheme = isDarkTheme, palette = palette) {
                 ChirpFieldAppNavigation(
                     isDarkTheme = isDarkTheme,
-                    onToggleTheme = { isDarkTheme = !isDarkTheme }
+                    onToggleTheme = {
+                        isDarkTheme = !isDarkTheme
+                        appearance.edit().putBoolean("dark", isDarkTheme).apply()
+                    },
+                    palette = palette,
+                    onPaletteChange = {
+                        palette = it
+                        appearance.edit().putString("palette", it).apply()
+                    }
                 )
             }
         }
@@ -108,6 +120,8 @@ class MainActivity : ComponentActivity() {
 fun ChirpFieldAppNavigation(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
+    palette: String = "Amber / Cyan",
+    onPaletteChange: (String) -> Unit = {},
 
 ) {
     AuthenticatedFieldWorkspace(
@@ -319,6 +333,7 @@ fun AuthenticatedFieldWorkspace(
                                 onSaveBank = { existing, name, reg, chList ->
                                     viewModel.saveChannelBank(existing, name, reg, chList)
                                 },
+                                onMoveBank = viewModel::moveLocalBank,
                                 onDeleteBank = { bank ->
                                     viewModel.deleteChannelBank(bank)
                                 },
@@ -414,13 +429,22 @@ fun AuthenticatedFieldWorkspace(
         }
     }
 
+    val exportBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")
+    ) { destination ->
+        if (destination != null) viewModel.exportLocalBackup(context, destination)
+    }
+
     if (showSettingsModal) {
 
         AlertDialog(
             onDismissRequest = { showSettingsModal = false },
             title = { Text("Settings") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Text(
                         text = "RADIOREFERENCE CSV IMPORT",
                         style = MaterialTheme.typography.labelMedium,
@@ -434,14 +458,13 @@ fun AuthenticatedFieldWorkspace(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                     Text(
-                        text = "APP & OPERATOR ACCOUNT",
+                        text = "APPEARANCE",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Text(
-                        text = "Local mode — no account required. Cloud sharing is unavailable.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    com.example.ui.components.ChoiceDropdown(
+                        "Color palette", listOf("Amber / Cyan", "Teal / Blue", "Purple / Rose", "Blue / Lime"),
+                        palette, onPaletteChange
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -466,6 +489,11 @@ fun AuthenticatedFieldWorkspace(
                 }
             },
             confirmButton = {
+                TextButton(onClick = {
+                    showSettingsModal = false
+                    val date = java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.US).format(java.util.Date())
+                    exportBackup.launch("ChirpField-backup-$date.zip")
+                }) { Text("Export backup") }
                 TextButton(onClick = { showSettingsModal = false }) {
                     Text("Close")
                 }

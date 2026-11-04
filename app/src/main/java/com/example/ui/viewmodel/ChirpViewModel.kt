@@ -221,9 +221,12 @@ class ChirpViewModel(
                 name = bankName.trim().ifBlank { "Custom Channel Bank" },
                 region = regionSummary, category = CATEGORY_CHANNEL_BANK,
                 targetRadioModel = _selectedRadio.value.model,
-                channelSpecs = channels.map { it.toSpecString() }
+                channelSpecs = channels.mapIndexed { index, channel -> channel.copy(number = index + 1).toSpecString() }
             )
-            localBanks.value = localBanks.value.filterNot { it.id == bank.id } + bank
+            val banks = localBanks.value
+            localBanks.value = if (banks.any { it.id == bank.id }) {
+                banks.map { if (it.id == bank.id) bank else it }
+            } else banks + bank
             persistLocalBanks()
             _statusBanner.value = "Saved channel bank locally."
             onSaved()
@@ -256,6 +259,72 @@ class ChirpViewModel(
                 _statusBanner.value = "Failed to save bank: ${err.localizedMessage}"
             }
         }
+    }
+
+    fun exportLocalBackup(context: Context, destination: android.net.Uri) {
+        val appContext = context.applicationContext
+        val workingChannels = _codeplugChannels.value.map { it.toSpecString() }
+        val workingTitle = _codeplugTitle.value
+        val model = _selectedRadio.value.model
+        val settings = _radioSettings.value
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    val appearance = appContext.getSharedPreferences("chirpfield_appearance", Context.MODE_PRIVATE)
+                    val saved = appContext.getSharedPreferences(PREFS_CODEPLUGS, Context.MODE_PRIVATE)
+                    val payload = org.json.JSONObject()
+                        .put("schemaVersion", 1)
+                        .put("banks", org.json.JSONArray(prefs.getString("local_banks", "[]") ?: "[]"))
+                        .put("savedCodeplugs", org.json.JSONObject(saved.all))
+                        .put("workingCodeplug", org.json.JSONObject()
+                            .put("name", workingTitle).put("model", model)
+                            .put("channels", org.json.JSONArray(workingChannels)))
+                        .put("appearance", org.json.JSONObject(appearance.all))
+                        .put("radioSettings", org.json.JSONObject()
+                            .put("squelchLevel", settings.squelchLevel).put("timeOutTimerSec", settings.timeOutTimerSec)
+                            .put("voiceLanguage", settings.voiceLanguage).put("backlightTimeout", settings.backlightTimeout)
+                            .put("powerOnMessageMode", settings.powerOnMessageMode).put("powerOnLine1", settings.powerOnLine1)
+                            .put("powerOnLine2", settings.powerOnLine2).put("batterySaveRatio", settings.batterySaveRatio)
+                            .put("keypadBeep", settings.keypadBeep).put("rogerBeep", settings.rogerBeep)
+                            .put("dualWatchTdr", settings.dualWatchTdr).put("tailToneElimination", settings.tailToneElimination)
+                            .put("voxSensitivity", settings.voxSensitivity).put("sideKey1Short", settings.sideKey1Short)
+                            .put("sideKey1Long", settings.sideKey1Long).put("sideKey2Short", settings.sideKey2Short)
+                            .put("sideKey2Long", settings.sideKey2Long).put("workModeA", settings.workModeA)
+                            .put("displayFormatA", settings.displayFormatA).put("displayFormatB", settings.displayFormatB)
+                            .put("pttIdMode", settings.pttIdMode).put("aniCode", settings.aniCode)
+                            .put("uv32ZoneNames", org.json.JSONArray(settings.uv32ZoneNames)))
+                    val stream = appContext.contentResolver.openOutputStream(destination)
+                        ?: error("Could not open the backup destination.")
+                    java.util.zip.ZipOutputStream(stream).use { zip ->
+                        zip.putNextEntry(java.util.zip.ZipEntry("chirpfield-backup.json"))
+                        zip.write(payload.toString(2).toByteArray(Charsets.UTF_8))
+                        zip.closeEntry()
+                        for (folder in listOf("mini-backups", "uv32-backups")) {
+                            val backups = java.io.File(appContext.filesDir, folder).listFiles().orEmpty()
+                            for (backup in backups.filter { it.isFile && it.extension == "bin" }) {
+                                zip.putNextEntry(java.util.zip.ZipEntry("$folder/${backup.name}"))
+                                backup.inputStream().use { it.copyTo(zip) }
+                                zip.closeEntry()
+                            }
+                        }
+                    }
+                }
+                _statusBanner.value = "ChirpField backup exported."
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _statusBanner.value = "Backup failed: ${error.localizedMessage}"
+            }
+        }
+    }
+
+    fun moveLocalBank(bankId: String, targetIndex: Int) {
+        val banks = localBanks.value.toMutableList()
+        val source = banks.indexOfFirst { it.id == bankId }
+        if (source < 0 || targetIndex !in banks.indices || source == targetIndex) return
+        banks.add(targetIndex, banks.removeAt(source))
+        localBanks.value = banks
+        persistLocalBanks()
     }
 
     fun deleteChannelBank(bank: ZoneDocument) {

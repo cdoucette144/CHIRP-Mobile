@@ -55,9 +55,26 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun ChirpFieldTheme(
     darkTheme: Boolean = true,
+    palette: String = "Amber / Cyan",
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val base = if (darkTheme) DarkColorScheme else LightColorScheme
+    val accents = when (palette) {
+        "Teal / Blue" -> if (darkTheme) Color(0xFF61DEC6) to Color(0xFFAAC7FF) else Color(0xFF006B5B) to Color(0xFF355E9B)
+        "Purple / Rose" -> if (darkTheme) Color(0xFFD3BCFF) to Color(0xFFF6B5CE) else Color(0xFF654894) to Color(0xFF893D5D)
+        "Blue / Lime" -> if (darkTheme) Color(0xFFA6C8FF) to Color(0xFFC8DE84) else Color(0xFF315E9D) to Color(0xFF4B641B)
+        else -> null
+    }
+    val colorScheme = accents?.let { (primary, secondary) ->
+        base.copy(
+            primary = primary,
+            secondary = secondary,
+            primaryContainer = primary.copy(alpha = 0.18f),
+            onPrimaryContainer = base.onSurface,
+            secondaryContainer = secondary.copy(alpha = 0.18f),
+            onSecondaryContainer = base.onSurface
+        )
+    } ?: base
 
     MaterialTheme(
         colorScheme = colorScheme,
