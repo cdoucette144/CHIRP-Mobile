@@ -383,7 +383,7 @@ fun AuthenticatedFieldWorkspace(
                                 showRadioControls = showCodeplugRadioControls,
                                 selectedZone = selectedCodeplugZone,
                                 onSelectZone = { selectedCodeplugZone = it },
-                                zoneNames = List(10) { index ->
+                                zoneNames = if (selectedRadio.id == "radtel_rt950_pro") radioSettings.rt950ZoneNames else List(10) { index ->
                                     radioSettings.uv32ZoneNames[index].ifBlank {
                                         radioSettings.uv32Downloaded?.zoneNames?.getOrNull(index).orEmpty()
                                     }

@@ -23,7 +23,16 @@ data class classSupportedRadioModel(
     val supportsNativeRxOnly: Boolean,
     val eepromIdent: String,
     val protocolNotes: String
-)
+) {
+    val zoneSize: Int get() = when (id) {
+        "baofeng_uv32" -> 100
+        "radtel_rt950_pro" -> 99
+        else -> 0
+    }
+
+    fun slotsForZone(zone: Int): IntRange = if (zoneSize > 0 && zone in 1..10)
+        ((zone - 1) * zoneSize + 1)..(zone * zoneSize) else 1..maxChannels
+}
 
 object RadioCatalog {
     val allRadios: List<classSupportedRadioModel> = listOf(
@@ -44,13 +53,13 @@ object RadioCatalog {
             id = "radtel_rt950_pro",
             vendor = "Radtel",
             model = "RT-950 Pro",
-            maxChannels = 960,
+            maxChannels = 990,
             bandsSummary = "Multiband analog · Bluetooth download",
             supportedBandsMhz = listOf(18.0..64.0, 70.0..580.0),
             transport = TransportInterface.BLUETOOTH_LE,
             supportsNativeRxOnly = true,
             eepromIdent = "RT-950PRO",
-            protocolNotes = "Read-only Bluetooth support. Enable Bluetooth on the radio before downloading."
+            protocolNotes = "Read-only Bluetooth support for firmware 0.24 and later (10 zones). Enable Bluetooth on the radio before downloading."
         ),
         classSupportedRadioModel(
             id = "baofeng_uv5_mini",

@@ -119,6 +119,10 @@ class HardwareProgrammerManager(private val context: Context) {
     private var lastMiniImage: ByteArray? = null
     private var lastUv32Image: ByteArray? = null
     private var lastUv32Extras: ByteArray? = null
+    var lastRt950ZoneNames: List<String> = emptyList()
+        private set
+    var lastRt950Settings: Map<String, String> = emptyMap()
+        private set
     private var uv32Baseline: Triple<String, ByteArray, List<RadioChannel>>? = null
     var lastUv32Settings: com.example.data.model.Uv32SettingsSnapshot? = null
         private set
@@ -630,6 +634,7 @@ class HardwareProgrammerManager(private val context: Context) {
      */
     private fun openUsbOtgTransport(
         usbDeviceName: String,
+        baud: Int = 9600,
         onLog: (String) -> Unit
     ): RadioSerialTransport {
         val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager
@@ -683,8 +688,20 @@ class HardwareProgrammerManager(private val context: Context) {
             throw IOException("Could not claim USB serial interface.")
         }
 
-        configureUsbSerial9600Baud(connection, device.vendorId)
-        onLog("[USB OTG] Opened ${identifySerialChipset(device.vendorId, device.productId)} @ 9600 8N1.")
+        try {
+            if (baud == 115200) {
+                require(device.vendorId == 0x0403) { "Select an FTDI cable for 115200 baud programming." }
+                for ((request, value) in listOf(0 to 0, 3 to 26, 4 to 8)) {
+                    if (connection.controlTransfer(0x40, request, value, 0, null, 0, 500) < 0) {
+                        throw IOException("FTDI serial setup failed (request $request).")
+                    }
+                }
+            } else configureUsbSerial9600Baud(connection, device.vendorId)
+        } catch (error: Exception) {
+            connection.close()
+            throw error
+        }
+        onLog("[USB OTG] Opened ${identifySerialChipset(device.vendorId, device.productId)} @ $baud 8N1.")
 
         return object : RadioSerialTransport {
             override suspend fun writeBytes(data: ByteArray) = withContext(Dispatchers.IO) {
@@ -844,12 +861,12 @@ class HardwareProgrammerManager(private val context: Context) {
         val rt950Pro = radio.id == "radtel_rt950_pro"
         lastPersistenceMessage = null
         if (rt950Pro && transportMode != "Bluetooth LE") throw IOException("Select Bluetooth for the RT-950 Pro download.")
-        if (uv32 && transportMode != "Bluetooth LE") throw IOException("Use Bluetooth for the UV-32 test download.")
+        val baud = if (uv32 || radio.id == "baofeng_uv5_mini") 115200 else 9600
         onProgress(0.04f, "[CONNECT] Opening $transportMode link for ${radio.model}...")
         val transport = if (transportMode == "Bluetooth LE") {
             openBleOrSppTransport(bleAddress, configureUv32Baud = uv32, unlockRt950Pro = rt950Pro) { line -> onProgress(0.08f, line) }
         } else {
-            openUsbOtgTransport(usbDeviceName) { line -> onProgress(0.08f, line) }
+            openUsbOtgTransport(usbDeviceName, baud) { line -> onProgress(0.08f, line) }
         }
 
         try {
@@ -858,6 +875,8 @@ class HardwareProgrammerManager(private val context: Context) {
                 val backups = java.io.File(context.filesDir, "rt950pro-backups").apply { mkdirs() }
                 val file = java.io.File(backups, "rt950pro-${System.currentTimeMillis()}.bin")
                 file.writeBytes(image)
+                lastRt950ZoneNames = Rt950ProReader.zoneNames(image)
+                lastRt950Settings = Rt950ProReader.settings(image)
                 val channels = Rt950ProReader.decodeChannels(image)
                 lastPersistenceMessage = "RT-950 Pro: downloaded ${channels.size} channels and saved ${file.name}."
                 onProgress(1f, checkNotNull(lastPersistenceMessage))
@@ -866,7 +885,9 @@ class HardwareProgrammerManager(private val context: Context) {
             if (uv32) {
                 val channels = readColorClone(transport, onProgress, uv32 = true)
                 MiniSessionExit.finish(transport, reconnectWaitMs = 0)
-                uv32Baseline = Triple(bleAddress, checkNotNull(lastUv32Image).copyOf(), channels)
+                if (transportMode == "Bluetooth LE") {
+                    uv32Baseline = Triple(bleAddress, checkNotNull(lastUv32Image).copyOf(), channels)
+                } else uv32Baseline = null
                 return@withContext channels
             }
             if (radio.model.contains("UV-5R Mini")) {
@@ -975,6 +996,7 @@ class HardwareProgrammerManager(private val context: Context) {
         onProgress: (Float, String) -> Unit
     ) = withContext(Dispatchers.IO) {
         require(radio.id != "radtel_rt950_pro") { "RT-950 Pro currently supports download only." }
+        require(radio.id != "baofeng_uv5_mini" || transportMode == "Bluetooth LE") { "Mini cable support is download-only for now." }
         if (radio.id == "baofeng_uv32") {
             require(transportMode == "Bluetooth LE") { "Use Bluetooth to upload to the UV-32." }
             uploadUv32(bleAddress, channels, settings, onProgress)

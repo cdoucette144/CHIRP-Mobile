@@ -95,6 +95,16 @@ fun RadioSettingsTabScreen(
             }
         }
 
+        if (selectedRadio.id == "radtel_rt950_pro") {
+            item {
+                Text("RT-950 Pro settings", style = MaterialTheme.typography.titleMedium)
+                Text(if (settings.rt950Settings.isEmpty()) "Download from the radio to load its settings." else "Downloaded values · read-only")
+            }
+            items(settings.rt950Settings.entries.toList()) { (label, value) ->
+                Text("$label · $value")
+            }
+            return@LazyColumn
+        }
         if (selectedRadio.id == "baofeng_uv32") {
             item {
                 val snapshot = settings.uv32Downloaded

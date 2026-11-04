@@ -16,8 +16,8 @@ internal object Rt950ProReader {
     private data class Region(val command: Int, val start: Int, val length: Int)
 
     private val regions = listOf(
-        Region(0x52, 0, 0x7800), Region(0x52, 0x8000, 0x100), Region(0x52, 0x9000, 0x100),
-        Region(0x52, 0xa000, 0x200), Region(0x52, 0xb000, 0x200), Region(0x52, 0xd000, 0x300),
+        Region(0x52, 0, 0x7c00), Region(0x52, 0x8000, 0x100), Region(0x52, 0x9000, 0x100),
+        Region(0x52, 0xa000, 0x200), Region(0x52, 0xb000, 0x200), Region(0x52, 0xd000, 0x300), Region(0x52, 0xc000, 0x100),
         Region(0x54, 0, 0x80)
     )
 
@@ -82,7 +82,41 @@ internal object Rt950ProReader {
         }
     }
 
-    fun decodeChannels(image: ByteArray): List<RadioChannel> = (0 until 960).mapNotNull { index ->
+    fun zoneNames(image: ByteArray): List<String> = List(10) { index ->
+        val offset = 0x8500 + index * 16
+        image.copyOfRange(offset, offset + 16)
+            .takeWhile { it != 0.toByte() && it != 0xff.toByte() }.toByteArray()
+            .toString(charset("GB2312")).trim()
+    }
+
+    fun settings(image: ByteArray): Map<String, String> = buildMap {
+        fun show(offset: Int, label: String, options: List<String> = emptyList()) {
+            val value = image[0x7d00 + offset].toInt() and 255
+            if (value != 255) put(label, options.getOrNull(value) ?: value.toString())
+        }
+        val offOn = listOf("Off", "On")
+        val displays = listOf("Channel", "Frequency", "Name")
+        show(0, "Squelch")
+        show(1, "Battery Save")
+        show(2, "VOX Gain")
+        show(3, "Auto Backlight")
+        show(4, "Dual Watch", offOn)
+        show(5, "Transmit Timeout")
+        show(6, "Key Beep", offOn)
+        show(7, "Voice Prompt", listOf("Off", "English", "Chinese"))
+        show(8, "Menu Language", listOf("English", "Chinese", "Other"))
+        show(9, "DTMF Mode", listOf("Off", "DT-ST", "ANI-ID", "DTMF"))
+        show(10, "Scan Resume", listOf("Time", "Carrier", "Search"))
+        show(11, "PTT ID", listOf("Off", "Start", "End", "Both"))
+        show(13, "Display A", displays)
+        show(14, "Display B", displays)
+        show(15, "Display C", displays)
+        show(16, "Auto Key Lock", offOn)
+        show(0x26, "Channel Divide", listOf("Zones", "All Channels"))
+        show(0x28, "VOX Switch", offOn)
+    }
+
+    fun decodeChannels(image: ByteArray): List<RadioChannel> = (0 until 990).mapNotNull { index ->
         val start = index * 32
         fun byte(offset: Int) = image[start + offset].toInt() and 255
         fun frequency(offset: Int): Long? {

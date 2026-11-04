@@ -145,13 +145,13 @@ fun CodeplugTabScreen(
     var editingChannel by remember { mutableStateOf<RadioChannel?>(null) }
     var isAddingNewChannel by remember { mutableStateOf(false) }
 
-    val supportsZones = selectedRadio.id == "baofeng_uv32"
+    val supportsZones = selectedRadio.zoneSize > 0
     var addMenu by remember { mutableStateOf(false) }
     var showReference by remember { mutableStateOf(false) }
     var slotToEdit by remember { mutableStateOf<Int?>(null) }
     var showZones by remember { mutableStateOf(false) }
     val visibleChannels = if (!supportsZones || selectedZone == 0) channels else channels.filter {
-        it.number in ((selectedZone - 1) * 100 + 1)..(selectedZone * 100)
+        it.number in selectedRadio.slotsForZone(selectedZone)
     }
     var selectedNumbers by remember(channels, selectedZone) { mutableStateOf(emptySet<Int>()) }
     if (showReference) {
@@ -423,8 +423,7 @@ fun CodeplugTabScreen(
                             isAddingNewChannel = true
                             editingChannel = RadioChannel(
                                 number = if (supportsZones) {
-                                    val range = if (selectedZone == 0) 1..selectedRadio.maxChannels
-                                        else ((selectedZone - 1) * 100 + 1)..(selectedZone * 100)
+                                    val range = selectedRadio.slotsForZone(selectedZone)
                                     range.firstOrNull { slot -> channels.none { it.number == slot } } ?: return@DropdownMenuItem
                                 } else channels.size + 1,
                                 name = "CH ${(channels.size + 1).toString().padStart(2, '0')}",
@@ -1090,7 +1089,7 @@ private fun HardwareTransferModal(
                 if (selectedRadio.id == "baofeng_uv32") {
                     Text("Turn on Wireless CPS and close Ola before connecting. Download from this UV-32 before uploading.")
                 }
-                if (selectedRadio.id != "baofeng_uv32") {
+                if (selectedRadio.id != "radtel_rt950_pro") {
                     val connections = listOf("Bluetooth", "USB cable")
                     com.example.ui.components.ChoiceDropdown(
                         label = "Connection",
@@ -1245,7 +1244,8 @@ private fun HardwareTransferModal(
                     onExecute(selectedRadio, transport, selectedBleAddress, selectedUsbDeviceName)
                 },
                 enabled = !isFlashing &&
-                    (selectedRadio.id != "baofeng_uv32" || transport == "Bluetooth LE") &&
+                    (selectedRadio.id != "radtel_rt950_pro" || (isDownload && transport == "Bluetooth LE")) &&
+                    (selectedRadio.id !in setOf("baofeng_uv32", "baofeng_uv5_mini") || isDownload || transport == "Bluetooth LE") &&
                     (if (transport == "Bluetooth LE") selectedBleAddress.isNotBlank() else selectedUsbDeviceName.isNotBlank()),
                 modifier = Modifier.testTag("confirm_hardware_transfer_btn")
             ) {

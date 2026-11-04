@@ -353,10 +353,10 @@ class ChirpViewModel(
         val bankChannels = bank.parsedChannels().map { ch ->
             normalizeChannelForRadio(ch, ch.rxOnly, radio)
         }
-        val destinationZone = zone.takeIf { radio.id == "baofeng_uv32" && it in 1..10 }
-        val combined = if (radio.id == "baofeng_uv32") {
+        val destinationZone = zone.takeIf { radio.zoneSize > 0 && it in 1..10 }
+        val combined = if (radio.zoneSize > 0) {
             val used = currentList.map { it.number }.toSet()
-            val range = destinationZone?.let { ((it - 1) * 100 + 1)..(it * 100) } ?: (1..radio.maxChannels)
+            val range = radio.slotsForZone(destinationZone ?: 0)
             val free = range.filterNot { it in used }
             if (destinationZone != null && bankChannels.size > free.size) {
                 _statusBanner.value = "Zone $destinationZone has ${free.size} free slots. '${bank.name}' needs ${bankChannels.size}."
@@ -434,8 +434,7 @@ class ChirpViewModel(
         val radio = _selectedRadio.value
         val current = _codeplugChannels.value
         val used = current.map { it.number }.toSet()
-        val range = if (radio.id == "baofeng_uv32" && zone in 1..10)
-            ((zone - 1) * 100 + 1)..(zone * 100) else 1..radio.maxChannels
+        val range = radio.slotsForZone(zone)
         val free = range.filterNot { it in used }
         if (free.size < imported.size) {
             _statusBanner.value = "There are only ${free.size} free slots in this view."
@@ -485,7 +484,7 @@ class ChirpViewModel(
         val slots = current.map { it.number }
         val item = current.removeAt(fromIndex)
         current.add(toIndex, item)
-        val zoned = _selectedRadio.value.id == "baofeng_uv32"
+        val zoned = _selectedRadio.value.zoneSize > 0
         _codeplugChannels.value = current.mapIndexed { index, channel ->
             channel.copy(number = if (zoned) slots[index] else index + 1)
         }
@@ -493,9 +492,9 @@ class ChirpViewModel(
 
     fun updateOrAddCodeplugChannel(edited: RadioChannel, isNew: Boolean) {
         val current = _codeplugChannels.value.toMutableList()
-        val zoned = _selectedRadio.value.id == "baofeng_uv32"
+        val zoned = _selectedRadio.value.zoneSize > 0
         if (isNew) {
-            if (zoned && (edited.number !in 1..1000 || current.any { it.number == edited.number })) return
+            if (zoned && (edited.number !in 1.._selectedRadio.value.maxChannels || current.any { it.number == edited.number })) return
             current.add(if (zoned) edited else edited.copy(number = current.size + 1))
         } else {
             val idx = current.indexOfFirst { it.number == edited.number }
@@ -511,7 +510,7 @@ class ChirpViewModel(
     }
 
     fun deleteCodeplugChannels(numbers: Set<Int>) {
-        _codeplugChannels.value = if (_selectedRadio.value.id == "baofeng_uv32") {
+        _codeplugChannels.value = if (_selectedRadio.value.zoneSize > 0) {
             _codeplugChannels.value.filterNot { it.number in numbers }
         } else com.example.domain.ChannelBatchEdit.delete(_codeplugChannels.value, numbers)
     }
@@ -571,6 +570,12 @@ class ChirpViewModel(
                 }
                 _codeplugChannels.value = downloadedChannels.mapIndexed { idx, ch ->
                     if (radio.id in setOf("baofeng_uv32", "radtel_rt950_pro") || radio.model.contains("UV-5R Mini")) ch else normalizeChannelForRadio(ch.copy(number = idx + 1), ch.rxOnly, radio)
+                }
+                if (radio.id == "radtel_rt950_pro") {
+                    _radioSettings.value = _radioSettings.value.copy(
+                        rt950ZoneNames = programmerManager.lastRt950ZoneNames,
+                        rt950Settings = programmerManager.lastRt950Settings
+                    )
                 }
                 programmerManager.lastUv32Settings?.takeIf { radio.id == "baofeng_uv32" }?.let { snapshot ->
                     val current = _radioSettings.value

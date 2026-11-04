@@ -78,6 +78,8 @@ data class RadioSettingsState(
     val displayFormatB: String = "Frequency",
     val pttIdMode: String = "Off",
     val aniCode: String = "101",
+    val rt950ZoneNames: List<String> = emptyList(),
+    val rt950Settings: Map<String, String> = emptyMap(),
     val uv32ZoneNames: List<String> = List(10) { "" },
     val uv32Downloaded: Uv32SettingsSnapshot? = null,
     val uv32MenuEdits: Map<Uv32MenuSetting, Int> = emptyMap()
